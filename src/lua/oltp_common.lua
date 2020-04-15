@@ -37,6 +37,8 @@ sysbench.cmdline.options = {
       {"Range size for range SELECT queries", 100},
    tables =
       {"Number of tables", 1},
+   num_table_splits =
+      {"Number of splits to the tables", 1},
    point_selects =
       {"Number of point SELECT queries per transaction", 10},
    simple_ranges =
@@ -187,6 +189,25 @@ function create_table(drv, con, table_num)
       error("Unsupported database driver:" .. drv:name())
    end
 
+   range_key_string = ""
+   if sysbench.opt.num_table_splits > 1 then
+      split_stmt = "SPLIT AT VALUES("
+      for i=1,sysbench.opt.num_table_splits  do
+         split_stmt = string.format(
+            "%s(%d)", split_stmt,
+            sysbench.opt.table_size / sysbench.opt.num_table_splits * i)
+         if i < sysbench.opt.num_table_splits then
+            split_stmt = string.format("%s,", split_stmt)
+         end
+      end
+      split_stmt = string.format("%s)", split_stmt)
+      print(string.format("SPLIT string : %s", split_stmt))
+
+      range_key_string = "ASC"
+      sysbench.opt.create_table_options =
+         split_stmt .. sysbench.opt.create_table_options
+   end
+
    print(string.format("Creating table 'sbtest%d'...", table_num))
 
    query = string.format([[
@@ -195,9 +216,9 @@ CREATE TABLE sbtest%d(
   k INTEGER DEFAULT '0' NOT NULL,
   c CHAR(120) DEFAULT '' NOT NULL,
   pad CHAR(60) DEFAULT '' NOT NULL,
-  %s (id)
+  %s (id %s)
 ) %s %s]],
-      table_num, id_def, id_index_def, engine_def,
+      table_num, id_def, id_index_def, range_key_string, engine_def,
       sysbench.opt.create_table_options)
 
    con:query(query)
