@@ -197,20 +197,22 @@ function create_table(drv, con, table_num)
    if sysbench.opt.range_key_partitioning then
       range_key_string = "ASC"
 
-      split_stmt = "SPLIT AT VALUES("
-      for i=1,sysbench.opt.num_table_splits - 1 do
-         split_stmt = string.format(
-            "%s(%d)", split_stmt,
-            sysbench.opt.table_size / sysbench.opt.num_table_splits * i)
-         if i < sysbench.opt.num_table_splits - 1 then
-            split_stmt = string.format("%s,", split_stmt)
+      if table_num == 1 then
+         split_stmt = "SPLIT AT VALUES("
+         for i=1,sysbench.opt.num_table_splits - 1 do
+            split_stmt = string.format(
+               "%s(%d)", split_stmt,
+               sysbench.opt.table_size / sysbench.opt.num_table_splits * i)
+            if i < sysbench.opt.num_table_splits - 1 then
+               split_stmt = string.format("%s,", split_stmt)
+            end
          end
-      end
-      split_stmt = string.format("%s)", split_stmt)
-      print(string.format("SPLIT string : %s", split_stmt))
+         split_stmt = string.format("%s)", split_stmt)
+         print(string.format("SPLIT string : %s", split_stmt))
 
-      sysbench.opt.create_table_options =
-         split_stmt .. sysbench.opt.create_table_options
+         sysbench.opt.create_table_options =
+            split_stmt .. sysbench.opt.create_table_options
+      end
    end
 
    time = os.date("*t")
