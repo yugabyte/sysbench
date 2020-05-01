@@ -1,24 +1,37 @@
-pgip=$1
+#!/bin/bash
+
+# Get the IP, numtables and the tablesize from the user. The default value for the
+# numtables is 10, tablesize is 100k and for the ip is '127.0.0.1'.
+tablesize=${tablesize:-100000}
+numtables=${numtables:-10}
+ip=${ip:-127.0.0.1}
+while [ $# -gt 0 ]; do
+   if [[ $1 == *"--"* ]]; then
+        param="${1/--/}"
+        declare $param="$2"
+   fi
+  shift
+done
+
 port=5433
 user=yugabyte
 db=yugabyte
 run_threads=64
-table_size=1000000
 time=120
+warmuptime=120
 
-load_workload() {
-  echo "LOADING"
-  time sysbench oltp_insert --tables=1 --table-size=$table_size --range_key_partitioning=true --serial_cache_size=1000 --db-driver=pgsql --pgsql-host=$pgip --pgsql-port=$port --pgsql-user=$user --pgsql-db=$db --threads=1 prepare
-  echo "DONE LOADING"
+delete_tables() {
+  for i in `seq $numtables`; do ysqlsh -h $ip -c "drop table sbtest$i;"; done
 }
 
 run_workload() {
   echo "RUNNING $1"
-  time sysbench $1 --tables=1 --table-size=$table_size --range_key_partitioning=true --serial_cache_size=1000 --db-driver=pgsql --pgsql-host=$pgip --pgsql-port=$port --pgsql-user=$user --pgsql-db=$db --threads=$run_threads --time=$time --warmup-time=120 run
+  time sysbench $1 --tables=$numtables --table-size=$tablesize --range_key_partitioning=true --serial_cache_size=1000 --db-driver=pgsql --pgsql-host=$ip --pgsql-port=$port --pgsql-user=$user --pgsql-db=$db prepare > $1-load.dat
+  time sysbench $1 --tables=1 --table-size=$tablesize --range_key_partitioning=true --serial_cache_size=1000 --db-driver=pgsql --pgsql-host=$ip --pgsql-port=$port --pgsql-user=$user --pgsql-db=$db --threads=$run_threads --time=$time --warmup-time=120 run > $1-run.dat
+  delete_tables
   echo "DONE $1"
 }
 
-load_workload
 run_workload oltp_insert
 run_workload oltp_point_select
 run_workload oltp_write_only
