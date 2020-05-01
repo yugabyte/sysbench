@@ -2,6 +2,8 @@
 
 # Get the IP, numtables and the tablesize from the user. The default value for the
 # numtables is 10, tablesize is 100k and for the ip is '127.0.0.1'.
+#
+# Run the script as './run_sysbench.sh --ip 192.168.1.2 --numtables 10 --tablesize 1000'
 tablesize=${tablesize:-100000}
 numtables=${numtables:-10}
 ip=${ip:-127.0.0.1}
@@ -21,6 +23,7 @@ time=120
 warmuptime=120
 
 delete_tables() {
+  # Make sure that ysqlsh is present in the 'PATH'.
   for i in `seq $numtables`; do ysqlsh -h $ip -c "drop table sbtest$i;"; done
 }
 
