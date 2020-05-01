@@ -26,8 +26,9 @@ delete_tables() {
 
 run_workload() {
   echo "RUNNING $1"
+  echo Writing output to $1-load.dat and $1-run.dat
   time sysbench $1 --tables=$numtables --table-size=$tablesize --range_key_partitioning=true --serial_cache_size=1000 --db-driver=pgsql --pgsql-host=$ip --pgsql-port=$port --pgsql-user=$user --pgsql-db=$db prepare > $1-load.dat
-  time sysbench $1 --tables=1 --table-size=$tablesize --range_key_partitioning=true --serial_cache_size=1000 --db-driver=pgsql --pgsql-host=$ip --pgsql-port=$port --pgsql-user=$user --pgsql-db=$db --threads=$run_threads --time=$time --warmup-time=120 run > $1-run.dat
+  time sysbench $1 --tables=$numtables --table-size=$tablesize --range_key_partitioning=true --serial_cache_size=1000 --db-driver=pgsql --pgsql-host=$ip --pgsql-port=$port --pgsql-user=$user --pgsql-db=$db --threads=$run_threads --time=$time --warmup-time=120 run > $1-run.dat
   delete_tables
   echo "DONE $1"
 }
