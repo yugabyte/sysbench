@@ -1,22 +1,33 @@
-pgip=$1
+#!/bin/bash
+
+# Get the IP, numtables and the tablesize from the user. The default value for the
+# numtables is 10, tablesize is 100k and for the ip is '127.0.0.1'.
+ip=${ip:-127.0.0.1}
+tablesize=${tablesize:-100000}
+numtables=${numtables:-10}
+while [ $# -gt 0 ]; do
+   if [[ $1 == *"--"* ]]; then
+        param="${1/--/}"
+        declare $param="$2"
+   fi
+  shift
+done
+
 port=5433
 user=yugabyte
 db=yugabyte
-run_threads=64
-table_size=100000
-num_tables=10
-time=60
-
-sqlsh=/repositories/yugabyte-db/bin/ysqlsh
+runthreads=64
+time=120
+warmuptime=120
 
 delete_tables() {
-  for i in `seq $num_tables`; do $sqlsh -h $pgip -c "drop table sbtest$i;"; done
+  for i in `seq $numtables`; do ysqlsh -h $ip -c "drop table sbtest$i;"; done
 }
 
 run_workload() {
   echo "RUNNING $1"
-  time sysbench oltp_insert --tables=$num_tables --table-size=$table_size --range_key_partitioning=true --serial_cache_size=1000 --db-driver=pgsql --pgsql-host=$pgip --pgsql-port=$port --pgsql-user=$user --pgsql-db=$db --threads=1 prepare
-  time sysbench $1 --tables=$num_tables --table-size=$table_size --range_key_partitioning=true --serial_cache_size=1000 --db-driver=pgsql --pgsql-host=$pgip --pgsql-port=$port --pgsql-user=$user --pgsql-db=$db --threads=$run_threads --time=$time --warmup-time=120 run
+  time sysbench $1 --tables=$numtables --table-size=$tablesize --range_key_partitioning=true --serial_cache_size=1000 --db-driver=pgsql --pgsql-host=$ip --pgsql-port=$port --pgsql-user=$user --pgsql-db=$db --threads=1 prepare
+  time sysbench $1 --tables=$numtables --table-size=$tablesize --range_key_partitioning=true --serial_cache_size=1000 --db-driver=pgsql --pgsql-host=$ip --pgsql-port=$port --pgsql-user=$user --pgsql-db=$db --threads=$runthreads --time=$time --warmup-time=$warmuptime run
   delete_tables
   echo "DONE $1"
 }
