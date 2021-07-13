@@ -312,7 +312,7 @@ char** str_split(char *src, char sep, int *numparts)
   (*numparts)++;
   char **splittedstr;
   splittedstr = malloc(*numparts * sizeof(char *));
-  if (*splittedstr == NULL)
+  if (splittedstr == NULL)
   {
     log_text(LOG_FATAL, "malloc() failed");
     exit(1);
