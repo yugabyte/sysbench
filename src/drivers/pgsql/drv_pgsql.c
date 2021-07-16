@@ -317,12 +317,11 @@ char** str_split(char *src, char sep, int *numparts)
     log_text(LOG_FATAL, "malloc() failed");
     exit(1);
   }
-  char *srcstr = strdup(src);
-  if (srcstr != NULL)
+  if (src != NULL)
   {
     for (int i = 0; i < *numparts; i++)
     {
-      splittedstr[i] = strsep(&srcstr, &sep);
+      splittedstr[i] = strsep(&src, &sep);
     }
   }
   return splittedstr;
@@ -847,6 +846,9 @@ int pgsql_drv_close(db_stmt_t *stmt)
 /* Uninitialize driver */
 int pgsql_drv_done(void)
 {
+  if (args.hosts != NULL) {
+    free(args.hosts);
+  }
   return 0;
 }
 
