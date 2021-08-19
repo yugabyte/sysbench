@@ -141,8 +141,8 @@ static db_error_t pgsql_drv_query(db_conn_t *, const char *, size_t,
 static int pgsql_drv_free_results(db_result_t *);
 static int pgsql_drv_close(db_stmt_t *);
 static int pgsql_drv_done(void);
-static void conn_stagger_wait(conn_sem_t * s);
-static int conn_stagger_signal(conn_sem_t * s);
+static void conn_create_wait(conn_sem_t * s);
+static int conn_create_signal(conn_sem_t * s);
 
 /* PgSQL driver definition */
 
@@ -255,7 +255,7 @@ static void empty_notice_processor(void *arg, const char *msg)
 int pgsql_drv_connect(db_conn_t *sb_conn)
 {
   PGconn *con;
-  conn_stagger_wait(&conn_sem);
+  conn_create_wait(&conn_sem);
   int hostindex =  sb_conn->thread_id % args.numhosts;
 
   con = PQsetdbLogin(args.hosts[hostindex],
@@ -277,7 +277,7 @@ int pgsql_drv_connect(db_conn_t *sb_conn)
   /* Silence the default notice receiver spitting NOTICE message to stderr */
   PQsetNoticeProcessor(con, empty_notice_processor, NULL);
   sb_conn->ptr = con;
-  conn_stagger_signal(&conn_sem);
+  conn_create_signal(&conn_sem);
   return 0;
 }
 
@@ -890,13 +890,13 @@ int get_unique_stmt_name(char *name, int len)
                   (int) sb_rand_uniform_uint64());
 }
 
-void conn_stagger_wait(conn_sem_t * sem) {
+void conn_create_wait(conn_sem_t * sem) {
   acquire_lock(&sem->lock);
   while (atomic_load(&sem->conn_count) <= 0);
   atomic_fetch_sub(&sem->conn_count, 1);
   release_lock(&sem->lock);
 }
 
-int conn_stagger_signal(conn_sem_t * sem) {
+int conn_create_signal(conn_sem_t * sem) {
   return atomic_fetch_add(&sem->conn_count, 1);
 }
