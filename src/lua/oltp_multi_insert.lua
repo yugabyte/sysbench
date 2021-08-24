@@ -6,8 +6,6 @@
 
 require("oltp_common")
 
-
-
 function prepare_statements()
     if not sysbench.opt.skip_trx then
         prepare_begin()
@@ -20,14 +18,10 @@ function event()
     if not sysbench.opt.skip_trx then
         begin()
     end
-
     execute_inserts()
 
     if not sysbench.opt.skip_trx then
         commit()
     end
-
     check_reconnect()
-
-
 end
