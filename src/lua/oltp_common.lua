@@ -398,7 +398,6 @@ function prepare_delete_inserts()
    prepare_for_each_table("deletes")
    prepare_for_each_table("inserts")
    prepare_for_each_table("inserts_autoinc")
-
 end
 
 function thread_init()
@@ -571,7 +570,6 @@ function execute_inserts()
          param[tnum].inserts[4]:set_rand_str(pad_value_template)
          stmt[tnum].inserts:execute()
       end
-
    end
 end
 
