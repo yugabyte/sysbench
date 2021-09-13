@@ -19,6 +19,7 @@ SUBDIRS = internal
 dist_pkgdata_SCRIPTS = bulk_insert.lua \
              oltp_delete.lua \
              oltp_insert.lua \
+             oltp_multi_insert.lua \
              oltp_read_only.lua \
              oltp_read_write.lua \
              oltp_point_select.lua \
