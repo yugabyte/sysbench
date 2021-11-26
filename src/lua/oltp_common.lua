@@ -97,10 +97,18 @@ function cmd_prepare()
 
    for i = sysbench.tid % sysbench.opt.threads + 1, sysbench.opt.tables,
    sysbench.opt.threads do
-     create_table(drv, con, i)
+      create_table(drv, con, i)
    end
 end
 
+function cmd_insert()
+   local drv = sysbench.sql.driver()
+   local con = drv:connect()
+   for i = sysbench.tid % sysbench.opt.threads + 1, sysbench.opt.tables,
+   sysbench.opt.threads do
+      bulk_load(con, i)
+   end
+end
 -- Preload the dataset into the server cache. This command supports parallel
 -- execution, i.e. will benefit from executing with --threads > 1 as long as
 -- --tables > 1
@@ -138,7 +146,7 @@ end
 sysbench.cmdline.commands = {
    prepare = {cmd_prepare, sysbench.cmdline.PARALLEL_COMMAND},
    warmup = {cmd_warmup, sysbench.cmdline.PARALLEL_COMMAND},
-   prewarm = {cmd_warmup, sysbench.cmdline.PARALLEL_COMMAND}
+   prewarm = {cmd_insert, sysbench.cmdline.PARALLEL_COMMAND}
 }
 
 
@@ -249,10 +257,13 @@ CREATE TABLE sbtest%d(
               table_num, table_num))
    end
 
+end
+
+function bulk_load(con, table_num)
    if (sysbench.opt.table_size > 0) then
       time = os.date("*t")
       print(string.format("(%2d:%2d:%2d) Inserting %d records into 'sbtest%d'",
-                          time.hour, time.min, time.sec, sysbench.opt.table_size, table_num))
+                           time.hour, time.min, time.sec, sysbench.opt.table_size, table_num))
    end
 
    if sysbench.opt.auto_inc then
@@ -273,13 +284,13 @@ CREATE TABLE sbtest%d(
 
       if (sysbench.opt.auto_inc) then
          query = string.format("(%d, '%s', '%s')",
-                               sysbench.rand.default(1, sysbench.opt.table_size),
-                               c_val, pad_val)
+                 sysbench.rand.default(1, sysbench.opt.table_size),
+                 c_val, pad_val)
       else
          query = string.format("(%d, %d, '%s', '%s')",
-                               i,
-                               sysbench.rand.default(1, sysbench.opt.table_size),
-                               c_val, pad_val)
+                 i,
+                 sysbench.rand.default(1, sysbench.opt.table_size),
+                 c_val, pad_val)
       end
 
       con:bulk_insert_next(query)
@@ -289,7 +300,6 @@ CREATE TABLE sbtest%d(
 
    time = os.date("*t")
    print(string.format("(%2d:%2d:%2d) Done Loading", time.hour, time.min, time.sec))
-
 end
 
 local t = sysbench.sql.type
