@@ -37,6 +37,8 @@ sysbench.cmdline.options = {
       {"Range size for range SELECT queries", 100},
    tables =
       {"Number of tables", 1},
+   indexes_per_table =
+     {"YB Internal: Number of indexes per table. An extra column will be added for every new index. This is to test insert performance with extra indexes and will not be used by any of the workloads. Applicable only if create_secondary is true", 1},
    serial_cache_size =
       {"Cache size used for the serial column", 1000},
    range_key_partitioning =
@@ -228,16 +230,25 @@ function create_table(drv, con, table_num)
    time = os.date("*t")
    print(string.format("(%2d:%2d:%2d) Creating table 'sbtest%d'...", 
                        time.hour, time.min, time.sec, table_num))
-
+   local extra_columns = 0;
+   local extra_cols_ddl = ""
+   if sysbench.opt.create_secondary and sysbench.opt.indexes_per_table > 1 then
+      extra_columns = sysbench.opt.indexes_per_table - 1
+      for i = 1, extra_columns do
+         extra_cols_ddl = string.format("%s k%d INTEGER DEFAULT '0' NOT NULL,",
+                 extra_cols_ddl, i)
+      end
+   end
    query = string.format([[
 CREATE TABLE sbtest%d(
   id %s,
   k INTEGER DEFAULT '0' NOT NULL,
+  %s
   c CHAR(120) DEFAULT '' NOT NULL,
   pad CHAR(60) DEFAULT '' NOT NULL,
   %s (id %s)
 ) %s %s]],
-      table_num, id_def, id_index_def, range_key_string, engine_def,
+      table_num, id_def, extra_cols_ddl, id_index_def, range_key_string, engine_def,
       sysbench.opt.create_table_options)
 
    con:query(query)
@@ -255,6 +266,11 @@ CREATE TABLE sbtest%d(
               time.hour, time.min, time.sec, table_num))
       con:query(string.format("CREATE INDEX k_%d ON sbtest%d(k)",
               table_num, table_num))
+      for i = 1, extra_columns do
+         print(string.format("(%2d:%2d:%2d) Creating a secondary index on 'sbtest%d'...",
+                 time.hour, time.min, time.sec, table_num))
+         con:query(string.format("CREATE INDEX k%d_%d ON sbtest%d(k%d)",i, table_num, table_num, i))
+      end
    end
 
 end
@@ -266,12 +282,21 @@ function bulk_load(con, table_num)
                            time.hour, time.min, time.sec, sysbench.opt.table_size, table_num))
    end
 
-   if sysbench.opt.auto_inc then
-      query = "INSERT INTO sbtest" .. table_num .. "(k, c, pad) VALUES"
-   else
-      query = "INSERT INTO sbtest" .. table_num .. "(id, k, c, pad) VALUES"
+   local extra_columns = 0;
+   local extra_cols_insert = ""
+   if sysbench.opt.create_secondary and sysbench.opt.indexes_per_table > 1 then
+      extra_columns = sysbench.opt.indexes_per_table - 1
+      for i = 1, extra_columns do
+         extra_cols_insert = string.format("%s k%d,",
+                 extra_cols_insert, i)
+      end
    end
 
+   if sysbench.opt.auto_inc then
+      query = string.format("INSERT INTO sbtest%d(k, %s c, pad) VALUES", table_num, extra_cols_insert)
+   else
+      query = string.format("INSERT INTO sbtest%d (id, k, %s c, pad) VALUES", table_num, extra_cols_insert)
+   end
    con:bulk_insert_init(query)
 
    local c_val
@@ -281,15 +306,21 @@ function bulk_load(con, table_num)
 
       c_val = get_c_value()
       pad_val = get_pad_value()
-
+      local extra_cols_value = ""
+      for i = 1, extra_columns do
+         extra_cols_value = string.format("%s %d,",
+                 extra_cols_value, sysbench.rand.default(1, sysbench.opt.table_size))
+      end
       if (sysbench.opt.auto_inc) then
-         query = string.format("(%d, '%s', '%s')",
+         query = string.format("(%d, %s '%s', '%s')",
                  sysbench.rand.default(1, sysbench.opt.table_size),
+                 extra_cols_value,
                  c_val, pad_val)
       else
-         query = string.format("(%d, %d, '%s', '%s')",
+         query = string.format("(%d, %d, %s '%s', '%s')",
                  i,
                  sysbench.rand.default(1, sysbench.opt.table_size),
+                 extra_cols_value,
                  c_val, pad_val)
       end
 
