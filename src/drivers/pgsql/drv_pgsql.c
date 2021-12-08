@@ -300,28 +300,31 @@ int pgsql_drv_reconnect(db_conn_t *sb_conn)
 
 char** str_split(char *src, char sep, int *numparts)
 {
-  int len = strlen(src);
-  *numparts = 0;
-  for (int i = 0; i < len; i++)
-  {
-    if (src[i] == sep)
-    {
+  *numparts = 1;
+  int prev_sep_index = -1;
+  for(int i = 0; src[i] != '\0'; ++i) {
+    if (src[i] == sep) {
       (*numparts)++;
     }
   }
-  (*numparts)++;
-  char **splittedstr;
-  splittedstr = malloc(*numparts * sizeof(char *));
-  if (splittedstr == NULL)
+  char **splittedstr = malloc(*numparts * sizeof(char*));
+  int part_index = 0;
+  for(int i = 0; ; ++i)
   {
-    log_text(LOG_FATAL, "malloc() failed");
-    exit(1);
-  }
-  if (src != NULL)
-  {
-    for (int i = 0; i < *numparts; i++)
+    if (src[i] == sep || src[i] == '\0')
     {
-      splittedstr[i] = strsep(&src, &sep);
+      char* part = malloc((i- prev_sep_index - 1) * sizeof(char));
+      for(int j = prev_sep_index + 1; j < i; ++j)
+      {
+        part[j - prev_sep_index - 1] = src[j];
+      }
+      splittedstr[part_index] = part;
+      log_text(LOG_NOTICE, "Server Endpoint: %s ", part);
+      ++part_index;
+      prev_sep_index = i;
+    }
+    if (src[i] == '\0') {
+      break;
     }
   }
   return splittedstr;
