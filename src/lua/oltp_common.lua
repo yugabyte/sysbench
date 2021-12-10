@@ -92,12 +92,26 @@ sysbench.cmdline.options = {
 -- Prepare the dataset. This command supports parallel execution, i.e. will
 -- benefit from executing with --threads > 1 as long as --tables > 1
 function cmd_prepare()
+   cmd_create()
+   cmd_load()
+end
+
+function cmd_create()
    local drv = sysbench.sql.driver()
    local con = drv:connect()
 
    for i = sysbench.tid % sysbench.opt.threads + 1, sysbench.opt.tables,
    sysbench.opt.threads do
      create_table(drv, con, i)
+   end
+end
+
+function cmd_load()
+   local drv = sysbench.sql.driver()
+   local con = drv:connect()
+   for i = sysbench.tid % sysbench.opt.threads + 1, sysbench.opt.tables,
+   sysbench.opt.threads do
+      bulk_load(con, i)
    end
 end
 
@@ -138,6 +152,8 @@ end
 sysbench.cmdline.commands = {
    prepare = {cmd_prepare, sysbench.cmdline.PARALLEL_COMMAND},
    warmup = {cmd_warmup, sysbench.cmdline.PARALLEL_COMMAND},
+   create = {cmd_create, sysbench.cmdline.PARALLEL_COMMAND},
+   load = {cmd_load, sysbench.cmdline.PARALLEL_COMMAND},
    prewarm = {cmd_warmup, sysbench.cmdline.PARALLEL_COMMAND}
 }
 
@@ -248,7 +264,9 @@ CREATE TABLE sbtest%d(
       con:query(string.format("CREATE INDEX k_%d ON sbtest%d(k)",
               table_num, table_num))
    end
+end
 
+function bulk_load(con, table_num)
    if (sysbench.opt.table_size > 0) then
       time = os.date("*t")
       print(string.format("(%2d:%2d:%2d) Inserting %d records into 'sbtest%d'",
