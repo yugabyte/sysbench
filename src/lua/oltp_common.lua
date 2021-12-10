@@ -84,7 +84,9 @@ sysbench.cmdline.options = {
           "PostgreSQL driver. The only currently supported " ..
           "variant is 'redshift'. When enabled, " ..
           "create_secondary is automatically disabled, and " ..
-          "delete_inserts is set to 0"}
+          "delete_inserts is set to 0"},
+   num_rows_in_insert =
+      {"Number of INSERT per transaction, for multi-insert test", 10}
 }
 
 -- Prepare the dataset. This command supports parallel execution, i.e. will
@@ -319,6 +321,9 @@ local stmt_defs = {
    inserts = {
       "INSERT INTO sbtest%u (id, k, c, pad) VALUES (?, ?, ?, ?)",
       t.INT, t.INT, {t.CHAR, 120}, {t.CHAR, 60}},
+   inserts_autoinc = {
+      "INSERT INTO sbtest%u (k, c, pad) VALUES (?, ?, ?)",
+      t.INT, {t.CHAR, 120}, {t.CHAR, 60}},
 }
 
 function prepare_begin()
@@ -392,6 +397,7 @@ end
 function prepare_delete_inserts()
    prepare_for_each_table("deletes")
    prepare_for_each_table("inserts")
+   prepare_for_each_table("inserts_autoinc")
 end
 
 function thread_init()
@@ -528,7 +534,6 @@ end
 
 function execute_delete_inserts()
    local tnum = get_table_num()
-
    for i = 1, sysbench.opt.delete_inserts do
       local id = get_id()
       local k = get_id()
@@ -544,6 +549,30 @@ function execute_delete_inserts()
       stmt[tnum].inserts:execute()
    end
 end
+
+function execute_inserts()
+   local tnum = get_table_num()
+   for i = 1, sysbench.opt.num_rows_in_insert do
+      local id
+      local k = get_id()
+      if (sysbench.opt.auto_inc) then
+         param[tnum].inserts_autoinc[1]:set(k)
+         param[tnum].inserts_autoinc[2]:set_rand_str(c_value_template)
+         param[tnum].inserts_autoinc[3]:set_rand_str(pad_value_template)
+         stmt[tnum].inserts_autoinc:execute()
+
+      else
+         -- Convert a uint32_t value to SQL INT
+         id = sysbench.rand.unique() - 2147483648
+         param[tnum].inserts[1]:set(id)
+         param[tnum].inserts[2]:set(k)
+         param[tnum].inserts[3]:set_rand_str(c_value_template)
+         param[tnum].inserts[4]:set_rand_str(pad_value_template)
+         stmt[tnum].inserts:execute()
+      end
+   end
+end
+
 
 -- Re-prepare statements if we have reconnected, which is possible when some of
 -- the listed error codes are in the --mysql-ignore-errors list
