@@ -53,7 +53,8 @@ static sb_arg_t pgsql_drv_args[] =
 
 typedef struct
 {
-  char               *host;
+  char               **hosts;
+  int                numhosts;
   char               *port;
   char               *user;
   char               *password;
@@ -112,6 +113,8 @@ static char use_ps; /* whether server-side prepared statemens should be used */
 
 /* PgSQL driver operations */
 
+
+static char** str_split(char *src, char sep, int *numparts);
 static int pgsql_drv_init(void);
 static int pgsql_drv_describe(drv_caps_t *);
 static int pgsql_drv_connect(db_conn_t *);
@@ -176,7 +179,11 @@ int register_driver_pgsql(sb_list_t *drivers)
 
 int pgsql_drv_init(void)
 {
-  args.host = sb_get_value_string("pgsql-host");
+  int numparts = 0;
+  char* hostlist = sb_get_value_string("pgsql-host");
+  char **hosts = str_split(hostlist, ',', &numparts);
+  args.hosts = hosts;
+  args.numhosts = numparts;
   args.port = sb_get_value_string("pgsql-port");
   args.user = sb_get_value_string("pgsql-user");
   args.password = sb_get_value_string("pgsql-password");
@@ -198,10 +205,8 @@ int pgsql_drv_describe(drv_caps_t *caps)
 {
   PGconn *con;
   
-  *caps = pgsql_drv_caps;
-
   /* Determine the server version */
-  con = PQsetdbLogin(args.host,
+  con = PQsetdbLogin(args.hosts[0],
                      args.port,
                      NULL,
                      NULL,
@@ -236,14 +241,16 @@ static void empty_notice_processor(void *arg, const char *msg)
 int pgsql_drv_connect(db_conn_t *sb_conn)
 {
   PGconn *con;
+  int hostindex =  sb_conn->thread_id % args.numhosts;
 
-  con = PQsetdbLogin(args.host,
+  con = PQsetdbLogin(args.hosts[hostindex],
                      args.port,
                      NULL,
                      NULL,
                      args.db,
                      args.user,
                      args.password);
+
   if (PQstatus(con) != CONNECTION_OK)
   {
     log_text(LOG_FATAL, "Connection to database failed: %s",
@@ -291,9 +298,39 @@ int pgsql_drv_reconnect(db_conn_t *sb_conn)
   return DB_ERROR_IGNORABLE;
 }
 
+char** str_split(char *src, char sep, int *numparts)
+{
+  *numparts = 1;
+  int prev_sep_index = -1;
+  for(int i = 0; src[i] != '\0'; ++i) {
+    if (src[i] == sep) {
+      (*numparts)++;
+    }
+  }
+  char **splittedstr = malloc(*numparts * sizeof(char*));
+  int part_index = 0;
+  for(int i = 0; ; ++i)
+  {
+    if (src[i] == sep || src[i] == '\0')
+    {
+      char* part = malloc((i- prev_sep_index - 1) * sizeof(char));
+      for(int j = prev_sep_index + 1; j < i; ++j)
+      {
+        part[j - prev_sep_index - 1] = src[j];
+      }
+      splittedstr[part_index] = part;
+      log_text(LOG_NOTICE, "Server Endpoint: %s ", part);
+      ++part_index;
+      prev_sep_index = i;
+    }
+    if (src[i] == '\0') {
+      break;
+    }
+  }
+  return splittedstr;
+}
 
 /* Prepare statement */
-
 
 int pgsql_drv_prepare(db_stmt_t *stmt, const char *query, size_t len)
 {
@@ -812,6 +849,9 @@ int pgsql_drv_close(db_stmt_t *stmt)
 /* Uninitialize driver */
 int pgsql_drv_done(void)
 {
+  if (args.hosts != NULL) {
+    free(args.hosts);
+  }
   return 0;
 }
 

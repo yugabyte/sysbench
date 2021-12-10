@@ -239,6 +239,14 @@ CREATE TABLE sbtest%d(
       con:query(query)
    end
 
+   if sysbench.opt.create_secondary then
+      time = os.date("*t")
+      print(string.format("(%2d:%2d:%2d) Creating a secondary index on 'sbtest%d'...",
+              time.hour, time.min, time.sec, table_num))
+      con:query(string.format("CREATE INDEX k_%d ON sbtest%d(k)",
+              table_num, table_num))
+   end
+
    if (sysbench.opt.table_size > 0) then
       time = os.date("*t")
       print(string.format("(%2d:%2d:%2d) Inserting %d records into 'sbtest%d'",
@@ -277,13 +285,6 @@ CREATE TABLE sbtest%d(
 
    con:bulk_insert_done()
 
-   if sysbench.opt.create_secondary then
-      time = os.date("*t")
-      print(string.format("(%2d:%2d:%2d) Creating a secondary index on 'sbtest%d'...",
-                          time.hour, time.min, time.sec, table_num))
-      con:query(string.format("CREATE INDEX k_%d ON sbtest%d(k)",
-                              table_num, table_num))
-   end
    time = os.date("*t")
    print(string.format("(%2d:%2d:%2d) Done Loading", time.hour, time.min, time.sec))
 
