@@ -94,6 +94,11 @@ sysbench.cmdline.options = {
 -- Prepare the dataset. This command supports parallel execution, i.e. will
 -- benefit from executing with --threads > 1 as long as --tables > 1
 function cmd_prepare()
+   cmd_create()
+   cmd_load()
+end
+
+function cmd_create()
    local drv = sysbench.sql.driver()
    local con = drv:connect()
 
@@ -103,7 +108,7 @@ function cmd_prepare()
    end
 end
 
-function cmd_insert()
+function cmd_load()
    local drv = sysbench.sql.driver()
    local con = drv:connect()
    for i = sysbench.tid % sysbench.opt.threads + 1, sysbench.opt.tables,
@@ -111,6 +116,7 @@ function cmd_insert()
       bulk_load(con, i)
    end
 end
+
 -- Preload the dataset into the server cache. This command supports parallel
 -- execution, i.e. will benefit from executing with --threads > 1 as long as
 -- --tables > 1
@@ -148,7 +154,9 @@ end
 sysbench.cmdline.commands = {
    prepare = {cmd_prepare, sysbench.cmdline.PARALLEL_COMMAND},
    warmup = {cmd_warmup, sysbench.cmdline.PARALLEL_COMMAND},
-   prewarm = {cmd_insert, sysbench.cmdline.PARALLEL_COMMAND}
+   create = {cmd_create, sysbench.cmdline.PARALLEL_COMMAND},
+   load = {cmd_load, sysbench.cmdline.PARALLEL_COMMAND},
+   prewarm = {cmd_warmup, sysbench.cmdline.PARALLEL_COMMAND}
 }
 
 
@@ -272,7 +280,6 @@ CREATE TABLE sbtest%d(
          con:query(string.format("CREATE INDEX k%d_%d ON sbtest%d(k%d)",i, table_num, table_num, i))
       end
    end
-
 end
 
 function bulk_load(con, table_num)
