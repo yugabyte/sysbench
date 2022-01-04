@@ -313,11 +313,12 @@ char** str_split(char *src, char sep, int *numparts)
   {
     if (src[i] == sep || src[i] == '\0')
     {
-      char* part = malloc((i- prev_sep_index - 1) * sizeof(char));
+      char* part = malloc((i - prev_sep_index) * sizeof(char));
       for(int j = prev_sep_index + 1; j < i; ++j)
       {
         part[j - prev_sep_index - 1] = src[j];
       }
+      part[i - prev_sep_index - 1] = '\0';
       splittedstr[part_index] = part;
       log_text(LOG_NOTICE, "Server Endpoint: %s ", part);
       ++part_index;
