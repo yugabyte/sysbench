@@ -18,6 +18,8 @@
 -- Common code for OLTP benchmarks.
 -- -----------------------------------------------------------------------------
 
+require("oltp_geopartition")
+
 function init()
    assert(event ~= nil,
           "this script is meant to be included by other OLTP scripts and " ..
@@ -86,7 +88,13 @@ sysbench.cmdline.options = {
           "create_secondary is automatically disabled, and " ..
           "delete_inserts is set to 0"},
    num_rows_in_insert =
-      {"Number of INSERT per transaction, for multi-insert test", 10}
+      {"Number of INSERT per transaction, for multi-insert test", 10},
+   use_geopartitioning =
+      {"Set true if this is a Geo-partitioning benchmark", false},
+   tblspace_num_replicas =
+      {"Number of replicas per table space", 3},
+   geopartitioned_queries =
+      {"Use queries that specify the geo-partitioning column in the where clause", true}
 }
 
 -- Prepare the dataset. This command supports parallel execution, i.e. will
@@ -99,19 +107,21 @@ end
 function cmd_create()
    local drv = sysbench.sql.driver()
    local con = drv:connect()
+   local tblspaces = create_tablespaces(con)
 
    for i = sysbench.tid % sysbench.opt.threads + 1, sysbench.opt.tables,
    sysbench.opt.threads do
-     create_table(drv, con, i)
+      create_table(drv, con, i, tblspaces)
    end
 end
 
 function cmd_load()
    local drv = sysbench.sql.driver()
    local con = drv:connect()
+   local tblspaces= get_tablespaces(con)
    for i = sysbench.tid % sysbench.opt.threads + 1, sysbench.opt.tables,
    sysbench.opt.threads do
-      bulk_load(con, i)
+      bulk_load(con, i, tblspaces)
    end
 end
 
@@ -123,6 +133,7 @@ end
 function cmd_warmup()
    local drv = sysbench.sql.driver()
    local con = drv:connect()
+   init_geopartition(con)
 
    assert(drv:name() == "mysql", "warmup is currently MySQL only")
 
@@ -178,10 +189,9 @@ function get_pad_value()
    return sysbench.rand.string(pad_value_template)
 end
 
-function create_table(drv, con, table_num)
+function create_table(drv, con, table_num, tblspaces)
    local id_index_def, id_def
    local engine_def = ""
-   local extra_table_options = ""
    local query
 
    if sysbench.opt.secondary then
@@ -237,18 +247,23 @@ function create_table(drv, con, table_num)
    print(string.format("(%2d:%2d:%2d) Creating table 'sbtest%d'...", 
                        time.hour, time.min, time.sec, table_num))
 
-   query = string.format([[
-CREATE TABLE sbtest%d(
-  id %s,
-  k INTEGER DEFAULT '0' NOT NULL,
-  c CHAR(120) DEFAULT '' NOT NULL,
-  pad CHAR(60) DEFAULT '' NOT NULL,
-  %s (id %s)
-) %s %s]],
-      table_num, id_def, id_index_def, range_key_string, engine_def,
-      sysbench.opt.create_table_options)
+   if (sysbench.opt.use_geopartitioning) then
+      create_tables(con, tblspaces, table_num, id_def, engine_def,
+              sysbench.opt.create_table_options, id_index_def, range_key_string)
+   else
+      query = string.format([[
+               CREATE TABLE sbtest%d(
+                 id %s,
+                 k INTEGER DEFAULT '0' NOT NULL,
+                 c CHAR(120) DEFAULT '' NOT NULL,
+                 pad CHAR(60) DEFAULT '' NOT NULL,
+                 %s (id %s)
+               ) %s %s]],
+              table_num, id_def, id_index_def, range_key_string, engine_def,
+              sysbench.opt.create_table_options)
+      con:query(query)
+   end
 
-   con:query(query)
 
    if sysbench.opt.auto_inc and sysbench.opt.serial_cache_size > 0 then
       print(string.format("alter sequence with cache size: %d", sysbench.opt.serial_cache_size))
@@ -266,13 +281,23 @@ CREATE TABLE sbtest%d(
    end
 end
 
-function bulk_load(con, table_num)
+function bulk_load(con, table_num, tblspaces)
    if (sysbench.opt.table_size > 0) then
       time = os.date("*t")
       print(string.format("(%2d:%2d:%2d) Inserting %d records into 'sbtest%d'",
                           time.hour, time.min, time.sec, sysbench.opt.table_size, table_num))
    end
+   if (sysbench.opt.use_geopartitioning) then
+      bulk_load_inserts_gp(con, tblspaces, table_num)
+   else
+      bulk_load_inserts(con, table_num)
+   end
 
+   time = os.date("*t")
+   print(string.format("(%2d:%2d:%2d) Done Loading", time.hour, time.min, time.sec))
+end
+
+function bulk_load_inserts(con, table_num)
    if sysbench.opt.auto_inc then
       query = "INSERT INTO sbtest" .. table_num .. "(k, c, pad) VALUES"
    else
@@ -285,7 +310,6 @@ function bulk_load(con, table_num)
    local pad_val
 
    for i = 1, sysbench.opt.table_size do
-
       c_val = get_c_value()
       pad_val = get_pad_value()
 
@@ -304,37 +328,33 @@ function bulk_load(con, table_num)
    end
 
    con:bulk_insert_done()
-
-   time = os.date("*t")
-   print(string.format("(%2d:%2d:%2d) Done Loading", time.hour, time.min, time.sec))
-
 end
 
 local t = sysbench.sql.type
 local stmt_defs = {
    point_selects = {
-      "SELECT c FROM sbtest%u WHERE id=?",
+      "SELECT c FROM sbtest%u WHERE %s id=?",
       t.INT},
    simple_ranges = {
-      "SELECT c FROM sbtest%u WHERE id BETWEEN ? AND ?",
+      "SELECT c FROM sbtest%u WHERE %s id BETWEEN ? AND ?",
       t.INT, t.INT},
    sum_ranges = {
-      "SELECT SUM(k) FROM sbtest%u WHERE id BETWEEN ? AND ?",
+      "SELECT SUM(k) FROM sbtest%u WHERE %s id BETWEEN ? AND ?",
        t.INT, t.INT},
    order_ranges = {
-      "SELECT c FROM sbtest%u WHERE id BETWEEN ? AND ? ORDER BY c",
+      "SELECT c FROM sbtest%u WHERE %s id BETWEEN ? AND ? ORDER BY c",
        t.INT, t.INT},
    distinct_ranges = {
-      "SELECT DISTINCT c FROM sbtest%u WHERE id BETWEEN ? AND ? ORDER BY c",
+      "SELECT DISTINCT c FROM sbtest%u WHERE %s id BETWEEN ? AND ? ORDER BY c",
       t.INT, t.INT},
    index_updates = {
-      "UPDATE sbtest%u SET k=k+1 WHERE id=?",
+      "UPDATE sbtest%u SET k=k+1 WHERE %s id=?",
       t.INT},
    non_index_updates = {
-      "UPDATE sbtest%u SET c=? WHERE id=?",
+      "UPDATE sbtest%u SET c=? WHERE %s id=?",
       {t.CHAR, 120}, t.INT},
    deletes = {
-      "DELETE FROM sbtest%u WHERE id=?",
+      "DELETE FROM sbtest%u WHERE %s id=?",
       t.INT},
    inserts = {
       "INSERT INTO sbtest%u (id, k, c, pad) VALUES (?, ?, ?, ?)",
@@ -342,6 +362,12 @@ local stmt_defs = {
    inserts_autoinc = {
       "INSERT INTO sbtest%u (k, c, pad) VALUES (?, ?, ?)",
       t.INT, {t.CHAR, 120}, {t.CHAR, 60}},
+   inserts_geopartition = {
+      "INSERT INTO sbtest%u (id, k, c, pad, geo_partition) VALUES (?, ?, ?, ?, ?)",
+      t.INT, t.INT, {t.CHAR, 120}, {t.CHAR, 60}, {t.VARCHAR, 120}},
+   inserts_autoinc_geopartition = {
+      "INSERT INTO sbtest%u (k, c, pad, geo_partition) VALUES (?, ?, ?, ?)",
+      t.INT, {t.CHAR, 120}, {t.CHAR, 60}, {t.VARCHAR, 120}},
 }
 
 function prepare_begin()
@@ -354,7 +380,12 @@ end
 
 function prepare_for_each_table(key)
    for t = 1, sysbench.opt.tables do
-      stmt[t][key] = con:prepare(string.format(stmt_defs[key][1], t))
+      geopartiton_clause = ""
+      if (sysbench.opt.use_geopartitioning == true and  sysbench.opt.geopartitioned_queries == true) then
+         geopartiton_clause = string.format(" geo_partition = '%s' AND ", geo_partition_col)
+      end
+
+      stmt[t][key] = con:prepare(string.format(stmt_defs[key][1], t, geopartiton_clause))
 
       local nparam = #stmt_defs[key] - 1
 
@@ -415,12 +446,15 @@ end
 function prepare_delete_inserts()
    prepare_for_each_table("deletes")
    prepare_for_each_table("inserts")
+   prepare_for_each_table("inserts_geopartition")
    prepare_for_each_table("inserts_autoinc")
+   prepare_for_each_table("inserts_autoinc_geopartition")
 end
 
 function thread_init()
    drv = sysbench.sql.driver()
    con = drv:connect()
+   get_geopartition_values(con)
 
    -- Create global nested tables for prepared statements and their
    -- parameters. We need a statement and a parameter set for each combination
@@ -465,14 +499,23 @@ function cleanup()
       print(string.format("Dropping table 'sbtest%d'...", i))
       con:query("DROP TABLE IF EXISTS sbtest" .. i )
    end
+
+   drop_tablespaces(con)
 end
 
 local function get_table_num()
    return sysbench.rand.uniform(1, sysbench.opt.tables)
 end
 
+local function get_rand_tblspace()
+   return sysbench.rand.default(1, #tblspaces)
+end
+
 local function get_id()
-   return sysbench.rand.default(1, sysbench.opt.table_size)
+   --s = sysbench.rand.default(start_idx, end_idx)
+   --print(s)
+   --return s
+   return sysbench.rand.default(start_idx, end_idx)
 end
 
 function begin()
@@ -555,16 +598,28 @@ function execute_delete_inserts()
    for i = 1, sysbench.opt.delete_inserts do
       local id = get_id()
       local k = get_id()
-
       param[tnum].deletes[1]:set(id)
 
-      param[tnum].inserts[1]:set(id)
-      param[tnum].inserts[2]:set(k)
-      param[tnum].inserts[3]:set_rand_str(c_value_template)
-      param[tnum].inserts[4]:set_rand_str(pad_value_template)
-
-      stmt[tnum].deletes:execute()
-      stmt[tnum].inserts:execute()
+      if (sysbench.opt.use_geopartitioning) then
+         param[tnum].inserts_geopartition[1]:set(id)
+         param[tnum].inserts_geopartition[2]:set(k)
+         param[tnum].inserts_geopartition[3]:set_rand_str(c_value_template)
+         param[tnum].inserts_geopartition[4]:set_rand_str(pad_value_template)
+         if (sysbench.opt.geopartitioned_queries) then
+            param[tnum].inserts_geopartition[5]:set(geo_partition_col)
+         else
+            param[tnum].inserts_geopartition[5]:set(tblspaces[get_rand_tblspace()])
+         end
+         stmt[tnum].deletes:execute()
+         stmt[tnum].inserts_geopartition:execute()
+      else
+         param[tnum].inserts[1]:set(id)
+         param[tnum].inserts[2]:set(k)
+         param[tnum].inserts[3]:set_rand_str(c_value_template)
+         param[tnum].inserts[4]:set_rand_str(pad_value_template)
+         stmt[tnum].deletes:execute()
+         stmt[tnum].inserts:execute()
+      end
    end
 end
 
@@ -574,19 +629,45 @@ function execute_inserts()
       local id
       local k = get_id()
       if (sysbench.opt.auto_inc) then
-         param[tnum].inserts_autoinc[1]:set(k)
-         param[tnum].inserts_autoinc[2]:set_rand_str(c_value_template)
-         param[tnum].inserts_autoinc[3]:set_rand_str(pad_value_template)
-         stmt[tnum].inserts_autoinc:execute()
+         if (sysbench.opt.use_geopartitioning) then
+            param[tnum].inserts_autoinc_geopartition[1]:set(k)
+            param[tnum].inserts_autoinc_geopartition[2]:set_rand_str(c_value_template)
+            param[tnum].inserts_autoinc_geopartition[3]:set_rand_str(pad_value_template)
+            if (sysbench.opt.geopartitioned_queries) then
+               param[tnum].inserts_autoinc_geopartition[4]:set(geo_partition_col)
+            else
+               param[tnum].inserts_autoinc_geopartition[4]:set(tblspaces[get_rand_tblspace()])
+            end
+            stmt[tnum].inserts_autoinc_geopartition:execute()
+         else
+            param[tnum].inserts_autoinc[1]:set(k)
+            param[tnum].inserts_autoinc[2]:set_rand_str(c_value_template)
+            param[tnum].inserts_autoinc[3]:set_rand_str(pad_value_template)
+            stmt[tnum].inserts_autoinc:execute()
+         end
 
       else
          -- Convert a uint32_t value to SQL INT
          id = sysbench.rand.unique() - 2147483648
-         param[tnum].inserts[1]:set(id)
-         param[tnum].inserts[2]:set(k)
-         param[tnum].inserts[3]:set_rand_str(c_value_template)
-         param[tnum].inserts[4]:set_rand_str(pad_value_template)
-         stmt[tnum].inserts:execute()
+         if (sysbench.opt.use_geopartitioning) then
+
+            param[tnum].inserts_geopartition[1]:set(id)
+            param[tnum].inserts_geopartition[2]:set(k)
+            param[tnum].inserts_geopartition[3]:set_rand_str(c_value_template)
+            param[tnum].inserts_geopartition[4]:set_rand_str(pad_value_template)
+            if (sysbench.opt.geopartitioned_queries) then
+               param[tnum].inserts_geopartition[5]:set(geo_partition_col)
+            else
+               param[tnum].inserts_geopartition[5]:set(tblspaces[get_rand_tblspace()])
+            end
+            stmt[tnum].inserts_geopartition:execute()
+         else
+            param[tnum].inserts[1]:set(id)
+            param[tnum].inserts[2]:set(k)
+            param[tnum].inserts[3]:set_rand_str(c_value_template)
+            param[tnum].inserts[4]:set_rand_str(pad_value_template)
+            stmt[tnum].inserts:execute()
+         end
       end
    end
 end
