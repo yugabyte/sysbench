@@ -19,7 +19,7 @@
 -- Read-Only OLTP benchmark
 -- ----------------------------------------------------------------------
 
-require("yb-fk-select-only-common")
+require("oltp_common_fk")
 
 function prepare_statements()
    prepare_point_selects()
