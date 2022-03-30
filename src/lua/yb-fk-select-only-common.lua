@@ -89,6 +89,10 @@ sysbench.cmdline.options = {
        0},
    mysql_storage_engine =
       {"Storage engine, if MySQL is used", "innodb"},
+   on_delete =
+      {"ON DELETE behaviour in case of Foreign key", "cascade"},
+   on_update =
+      {"ON UPDATE behaviour in case of Foreign key", "cascade"},
    pgsql_variant =
       {"Use this PostgreSQL variant when running with the " ..
           "PostgreSQL driver. The only currently supported " ..
@@ -292,11 +296,11 @@ CREATE TABLE sbtest_child%d(
   Name varchar(150),
   Gender varchar(140),
   country varchar(120),
-  DepartmentId int references sbtest_parent%d(DeptId) on delete cascade on update cascade,
+  DepartmentId int references sbtest_parent%d(DeptId) on delete %s on update %s,
   %s (EmpId %s)
 ) %s %s]],
-      table_num, id_def, table_num, id_index_def, range_key_string, engine_def,
-      sysbench.opt.create_table_options)
+      table_num, id_def, table_num, sysbench.opt.on_delete, sysbench.opt.on_update, id_index_def,
+      range_key_string, engine_def, sysbench.opt.create_table_options)
    else
       query = string.format([[
 CREATE TABLE sbtest_child%d(
