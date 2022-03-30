@@ -107,11 +107,10 @@ end
 function cmd_create()
    local drv = sysbench.sql.driver()
    local con = drv:connect()
-   local tblspaces = create_tablespaces(con)
 
-   for i = sysbench.tid % sysbench.opt.threads + 1, sysbench.opt.tables,
-   sysbench.opt.threads do
-      create_table(drv, con, i, tblspaces)
+   local tblspaces = create_tablespaces(con)
+   for i = 1, sysbench.opt.tables do
+      create_objects(drv, con, i, tblspaces)
    end
 end
 
@@ -163,7 +162,7 @@ end
 sysbench.cmdline.commands = {
    prepare = {cmd_prepare, sysbench.cmdline.PARALLEL_COMMAND},
    warmup = {cmd_warmup, sysbench.cmdline.PARALLEL_COMMAND},
-   create = {cmd_create, sysbench.cmdline.PARALLEL_COMMAND},
+   create = {cmd_create},
    load = {cmd_load, sysbench.cmdline.PARALLEL_COMMAND},
    prewarm = {cmd_warmup, sysbench.cmdline.PARALLEL_COMMAND}
 }
@@ -189,7 +188,7 @@ function get_pad_value()
    return sysbench.rand.string(pad_value_template)
 end
 
-function create_table(drv, con, table_num, tblspaces)
+function create_objects(drv, con, table_num, tblspaces)
    local id_index_def, id_def
    local engine_def = ""
    local query
@@ -276,8 +275,13 @@ function create_table(drv, con, table_num, tblspaces)
       time = os.date("*t")
       print(string.format("(%2d:%2d:%2d) Creating a secondary index on 'sbtest%d'...",
               time.hour, time.min, time.sec, table_num))
-      con:query(string.format("CREATE INDEX k_%d ON sbtest%d(k)",
-              table_num, table_num))
+      if (sysbench.opt.use_geopartitioning) then
+         create_index_gp(con, table_num, tblspaces)
+      else
+         con:query(string.format("CREATE INDEX k_%d ON sbtest%d(k)",
+                 table_num, table_num))
+      end
+
    end
 end
 
