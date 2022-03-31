@@ -191,15 +191,6 @@ function create_index_gp(con, table_num, tblspaces)
 end
 
 function bulk_load_inserts_gp(con, tblspaces, table_num)
-    if sysbench.opt.auto_inc then
-        query = string.format("INSERT INTO sbtest%d(k, c, pad, geo_partition) VALUES",
-                table_num)
-    else
-        query = string.format("INSERT INTO sbtest%d (id, k, c, pad, geo_partition) VALUES",
-                table_num)
-    end
-    con:bulk_insert_init(query)
-
     local c_val
     local pad_val
     local geo_partition
@@ -207,6 +198,14 @@ function bulk_load_inserts_gp(con, tblspaces, table_num)
     local values_per_tblspace = sysbench.opt.table_size/ #tblspaces
     local curr_tblspace_idx = 1
     for i = 1, sysbench.opt.table_size do
+        if sysbench.opt.auto_inc then
+            query = string.format("INSERT INTO sbtest%d(k, c, pad, geo_partition) VALUES",
+                    table_num)
+        else
+            query = string.format("INSERT INTO sbtest%d (id, k, c, pad, geo_partition) VALUES",
+                    table_num)
+        end
+        con:bulk_insert_init(query)
         if (i > max_value_curr_tblspace) then
             curr_tblspace_idx = curr_tblspace_idx + 1
             max_value_curr_tblspace = max_value_curr_tblspace + values_per_tblspace
@@ -228,9 +227,10 @@ function bulk_load_inserts_gp(con, tblspaces, table_num)
         end
 
         con:bulk_insert_next(query)
+        con:bulk_insert_done()
+
     end
 
-    con:bulk_insert_done()
 end
 
 function drop_tablespaces(con)
