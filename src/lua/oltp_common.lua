@@ -449,15 +449,20 @@ end
 
 function prepare_delete_inserts()
    prepare_for_each_table("deletes")
-   prepare_for_each_table("inserts")
-   prepare_for_each_table("inserts_geopartition")
-   prepare_for_each_table("inserts_autoinc")
-   prepare_for_each_table("inserts_autoinc_geopartition")
+   if (sysbench.opt.use_geopartitioning) then
+      prepare_for_each_table("inserts_geopartition")
+      prepare_for_each_table("inserts_autoinc_geopartition")
+   else
+      prepare_for_each_table("inserts_autoinc")
+      prepare_for_each_table("inserts")
+   end
 end
 
 function thread_init()
    drv = sysbench.sql.driver()
    con = drv:connect()
+   start_idx = 1
+   end_idx = sysbench.opt.table_size
    get_geopartition_values(con)
 
    -- Create global nested tables for prepared statements and their
@@ -516,9 +521,6 @@ local function get_rand_tblspace()
 end
 
 local function get_id()
-   --s = sysbench.rand.default(start_idx, end_idx)
-   --print(s)
-   --return s
    return sysbench.rand.default(start_idx, end_idx)
 end
 
