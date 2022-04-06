@@ -435,13 +435,13 @@ local stmt_defs = {
       "SELECT DepartmentId,Name FROM sbtest_child%u WHERE DepartmentId BETWEEN ? AND ?",
       t.INT, t.INT},
    sum_ranges = {
-      "SELECT SUM(k) FROM sbtest_child%u WHERE id BETWEEN ? AND ?",
+      "SELECT SUM(EmpId) FROM sbtest_child%u WHERE DepartmentId BETWEEN ? AND ?",
        t.INT, t.INT},
    order_ranges = {
-      "SELECT c FROM sbtest_child%u WHERE id BETWEEN ? AND ? ORDER BY c",
+      "SELECT name FROM sbtest_child%u WHERE DepartmentId BETWEEN ? AND ? ORDER BY name",
        t.INT, t.INT},
    distinct_ranges = {
-      "SELECT DISTINCT c FROM sbtest%u WHERE id BETWEEN ? AND ? ORDER BY c",
+      "SELECT DISTINCT name FROM sbtest_child%u WHERE DepartmentId BETWEEN ? AND ? ORDER BY name",
       t.INT, t.INT},
    index_updates = {
       "UPDATE sbtest%u SET k=k+1 WHERE id=?",
