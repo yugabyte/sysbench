@@ -126,8 +126,8 @@ function create_tablespaces(con)
                     cloud, region, zone, sysbench.opt.tblspace_num_replicas)
         else
             error(string.format("Number of zones in cloud %s:%s is %s and it "..
-                    "does not match number of R %s",
-                    cloud, region, rs_zones.nrows, sysbench.opt.tblspace_num_replicas))
+                    "does not match number of replicas %s",
+                    clouds[i], regions[i], rs_zones.nrows, sysbench.opt.tblspace_num_replicas))
         end
         tblspace_sql = tblspace_sql .. "]}')"
         con:query(tblspace_sql)
