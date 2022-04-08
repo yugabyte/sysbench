@@ -90,8 +90,8 @@ function create_tablespaces(con)
     init_geopartition(con)
     for i = 1, rs_regions.nrows do
         if (tonumber(servers_in_regions[i]) < sysbench.opt.tblspace_num_replicas) then
-            error(string.format("Region %s:%s has only %s servers ",
-                    cloud, region, servers_in_region))
+            error(string.format("Region %s:%s has only %s server(s). Num replicas: %d ",
+                    clouds[i], regions[i], servers_in_regions[i], sysbench.opt.tblspace_num_replicas))
         end
     end
 
