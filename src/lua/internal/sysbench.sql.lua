@@ -392,8 +392,12 @@ function statement_methods.bind_create(self, btype, max_len)
 
    if btype == sql_type.TINYINT or
       btype == sql_type.SMALLINT or
-      btype == sql_type.INT or
-      btype == sql_type.BIGINT
+      btype == sql_type.INT
+   then
+      param.type = sql_type.INT
+      param.buffer = ffi.new('int[1]')
+      param.max_len = 4
+   elseif btype == sql_type.BIGINT
    then
       param.type = sql_type.BIGINT
       param.buffer = ffi.new('int64_t[1]')
