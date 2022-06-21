@@ -396,7 +396,7 @@ function statement_methods.bind_create(self, btype, max_len)
    then
       param.type = sql_type.INT
       param.buffer = ffi.new('int[1]')
-      param.max_len = 8
+      param.max_len = 4
    elseif btype == sql_type.BIGINT
    then
       param.type = sql_type.BIGINT
