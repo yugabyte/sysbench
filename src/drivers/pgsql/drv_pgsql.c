@@ -204,7 +204,9 @@ int pgsql_drv_init(void)
 int pgsql_drv_describe(drv_caps_t *caps)
 {
   PGconn *con;
-  
+
+  *caps = pgsql_drv_caps;
+
   /* Determine the server version */
   con = PQsetdbLogin(args.hosts[0],
                      args.port,
