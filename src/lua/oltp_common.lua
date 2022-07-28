@@ -515,7 +515,15 @@ function cleanup()
 end
 
 local function get_table_num()
-   return sysbench.rand.uniform(1, sysbench.opt.tables)
+   local tnum =  sysbench.rand.uniform(1, sysbench.opt.tables)
+   if tnum ==  11 or
+           tnum == 9 or
+      tnum == 31 or
+      tnum == 21 or
+      tnum == 29 then
+      return tnum + 1
+   end
+   return tnum
 end
 
 local function get_id()
