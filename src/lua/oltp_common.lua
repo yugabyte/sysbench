@@ -321,6 +321,9 @@ local stmt_defs = {
    sequential_scan = {
       "SELECT c FROM sbtest%u Limit ?",
       t.INT},
+   join = {
+      "SELECT t1.c, t2.c FROM sbtest%u as t1 join sbtest%u as t2 on t1.id = t2.id where t1.id > ? and t1.id < ? and t2.id > ? and t2.id < ? ",
+      t.INT, t.INT, t.INT, t.INT},
    sum_ranges = {
       "SELECT SUM(k) FROM sbtest%u WHERE id BETWEEN ? AND ?",
        t.INT, t.INT},
@@ -387,6 +390,39 @@ function prepare_for_each_table(key)
    end
 end
 
+function prepare_for_join(key)
+   for t = 1, sysbench.opt.tables do
+      local join_tnum = sysbench.rand.uniform(1, sysbench.opt.tables)
+      stmt[t][key] = con:prepare(string.format(stmt_defs[key][1], t, join_tnum))
+
+      local nparam = #stmt_defs[key] - 1
+
+      if nparam > 0 then
+         param[t][key] = {}
+      end
+
+      for p = 1, nparam do
+         local btype = stmt_defs[key][p+1]
+         local len
+
+         if type(btype) == "table" then
+            len = btype[2]
+            btype = btype[1]
+         end
+         if btype == sysbench.sql.type.VARCHAR or
+                 btype == sysbench.sql.type.CHAR then
+            param[t][key][p] = stmt[t][key]:bind_create(btype, len)
+         else
+            param[t][key][p] = stmt[t][key]:bind_create(btype)
+         end
+      end
+
+      if nparam > 0 then
+         stmt[t][key]:bind_param(unpack(param[t][key]))
+      end
+   end
+end
+
 function prepare_point_selects()
    prepare_for_each_table("point_selects")
 end
@@ -397,6 +433,10 @@ end
 
 function prepare_sequential_scan()
    prepare_for_each_table("sequential_scan")
+end
+
+function prepare_join()
+   prepare_for_join("join")
 end
 
 function prepare_sum_ranges()
@@ -532,9 +572,21 @@ function execute_sequential_scan()
    local tnum = get_table_num()
 
    param[tnum].sequential_scan[1]:set(get_id())
-   param[tnum].sequential_scan[1]:set(sysbench.opt.range_size)
+   param[tnum].sequential_scan[2]:set(sysbench.opt.range_size)
 
    stmt[tnum].sequential_scan:execute()
+end
+
+function execute_join()
+   local tnum = get_table_num()
+   local start_id = get_id()
+   local end_id = start_id + sysbench.opt.range_size
+   param[tnum].join[1]:set(start_id)
+   param[tnum].join[2]:set(end_id)
+   param[tnum].join[3]:set(start_id)
+   param[tnum].join[4]:set(end_id)
+
+   stmt[tnum].join:execute()
 end
 
 function execute_order_ranges()
