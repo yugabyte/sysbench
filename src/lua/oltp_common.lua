@@ -318,6 +318,9 @@ local stmt_defs = {
    simple_ranges = {
       "SELECT c FROM sbtest%u WHERE id BETWEEN ? AND ?",
       t.INT, t.INT},
+   sequential_scan = {
+      "SELECT c FROM sbtest%u Limit ?",
+      t.INT},
    sum_ranges = {
       "SELECT SUM(k) FROM sbtest%u WHERE id BETWEEN ? AND ?",
        t.INT, t.INT},
@@ -390,6 +393,10 @@ end
 
 function prepare_simple_ranges()
    prepare_for_each_table("simple_ranges")
+end
+
+function prepare_sequential_scan()
+   prepare_for_each_table("sequential_scan")
 end
 
 function prepare_sum_ranges()
@@ -519,6 +526,15 @@ end
 
 function execute_sum_ranges()
    execute_range("sum_ranges")
+end
+
+function execute_sequential_scan()
+   local tnum = get_table_num()
+
+   param[tnum].sequential_scan[1]:set(get_id())
+   param[tnum].sequential_scan[1]:set(sysbench.opt.range_size)
+
+   stmt[tnum].sequential_scan:execute()
 end
 
 function execute_order_ranges()
