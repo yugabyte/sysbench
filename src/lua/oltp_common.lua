@@ -571,8 +571,7 @@ end
 function execute_sequential_scan()
    local tnum = get_table_num()
 
-   param[tnum].sequential_scan[1]:set(get_id())
-   param[tnum].sequential_scan[2]:set(sysbench.opt.range_size)
+   param[tnum].sequential_scan[1]:set(sysbench.opt.range_size)
 
    stmt[tnum].sequential_scan:execute()
 end
