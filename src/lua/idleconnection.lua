@@ -24,3 +24,7 @@ function event()
     -- sleep for a second
     sleep(1)
 end
+
+function thread_done()
+    con:disconnect()
+end
