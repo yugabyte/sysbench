@@ -318,6 +318,18 @@ local stmt_defs = {
    simple_ranges = {
       "SELECT c FROM sbtest%u WHERE id BETWEEN ? AND ?",
       t.INT, t.INT},
+   sequential_scan = {
+      "SELECT c FROM sbtest%u Limit ?",
+      t.INT},
+   light_join = {
+      "SELECT t1.c, t2.c FROM sbtest%u as t1 join sbtest%u as t2 on t1.id = t2.id where t1.id > ? and t1.id < ? and t2.id > ? and t2.id < ? ",
+      t.INT, t.INT, t.INT, t.INT},
+   heavy_join = {
+      "SELECT t1.c, t2.c FROM sbtest%u as t1 join sbtest%u as t2 on t1.id = t2.id join sbtest%u as t3 on t1.id = t3.id " ..
+      "join sbtest%u as t4 on t1.id = t4.id join sbtest%u as t5 on t1.id = t5.id where " ..
+      " t1.id > ? and t1.id < ? and t2.id > ? and t2.id < ? and t3.id > ? and t3.id < ? and t4.id > ? and t4.id < ? " ..
+      "and t5.id > ? and t5.id < ?",
+      t.INT, t.INT, t.INT, t.INT, t.INT, t.INT, t.INT, t.INT, t.INT, t.INT},
    sum_ranges = {
       "SELECT SUM(k) FROM sbtest%u WHERE id BETWEEN ? AND ?",
        t.INT, t.INT},
@@ -384,12 +396,95 @@ function prepare_for_each_table(key)
    end
 end
 
+function prepare_for_heavy_join(key)
+   for t = 1, sysbench.opt.tables do
+      local t1 = sysbench.rand.uniform(1, sysbench.opt.tables)
+      local t2 = sysbench.rand.uniform(1, sysbench.opt.tables)
+      local t3 = sysbench.rand.uniform(1, sysbench.opt.tables)
+      local t4 = sysbench.rand.uniform(1, sysbench.opt.tables)
+      local t5 = sysbench.rand.uniform(1, sysbench.opt.tables)
+
+      stmt[t][key] = con:prepare(string.format(stmt_defs[key][1], t, t1, t2, t3,t4, t5))
+
+      local nparam = #stmt_defs[key] - 1
+
+      if nparam > 0 then
+         param[t][key] = {}
+      end
+
+      for p = 1, nparam do
+         local btype = stmt_defs[key][p+1]
+         local len
+
+         if type(btype) == "table" then
+            len = btype[2]
+            btype = btype[1]
+         end
+         if btype == sysbench.sql.type.VARCHAR or
+                 btype == sysbench.sql.type.CHAR then
+            param[t][key][p] = stmt[t][key]:bind_create(btype, len)
+         else
+            param[t][key][p] = stmt[t][key]:bind_create(btype)
+         end
+      end
+
+      if nparam > 0 then
+         stmt[t][key]:bind_param(unpack(param[t][key]))
+      end
+   end
+end
+
+function prepare_for_light_join(key)
+   for t = 1, sysbench.opt.tables do
+      local light_join_tnum = sysbench.rand.uniform(1, sysbench.opt.tables)
+      stmt[t][key] = con:prepare(string.format(stmt_defs[key][1], t, light_join_tnum))
+
+      local nparam = #stmt_defs[key] - 1
+
+      if nparam > 0 then
+         param[t][key] = {}
+      end
+
+      for p = 1, nparam do
+         local btype = stmt_defs[key][p+1]
+         local len
+
+         if type(btype) == "table" then
+            len = btype[2]
+            btype = btype[1]
+         end
+         if btype == sysbench.sql.type.VARCHAR or
+                 btype == sysbench.sql.type.CHAR then
+            param[t][key][p] = stmt[t][key]:bind_create(btype, len)
+         else
+            param[t][key][p] = stmt[t][key]:bind_create(btype)
+         end
+      end
+
+      if nparam > 0 then
+         stmt[t][key]:bind_param(unpack(param[t][key]))
+      end
+   end
+end
+
 function prepare_point_selects()
    prepare_for_each_table("point_selects")
 end
 
 function prepare_simple_ranges()
    prepare_for_each_table("simple_ranges")
+end
+
+function prepare_sequential_scan()
+   prepare_for_each_table("sequential_scan")
+end
+
+function prepare_light_join()
+   prepare_for_light_join("light_join")
+end
+
+function prepare_heavy_join()
+   prepare_for_heavy_join("heavy_join")
 end
 
 function prepare_sum_ranges()
@@ -519,6 +614,44 @@ end
 
 function execute_sum_ranges()
    execute_range("sum_ranges")
+end
+
+function execute_sequential_scan()
+   local tnum = get_table_num()
+
+   param[tnum].sequential_scan[1]:set(sysbench.opt.range_size)
+
+   stmt[tnum].sequential_scan:execute()
+end
+
+function execute_light_join()
+   local tnum = get_table_num()
+   local start_id = get_id()
+   local end_id = start_id + sysbench.opt.range_size
+   param[tnum].light_join[1]:set(start_id)
+   param[tnum].light_join[2]:set(end_id)
+   param[tnum].light_join[3]:set(start_id)
+   param[tnum].light_join[4]:set(end_id)
+
+   stmt[tnum].light_join:execute()
+end
+
+function execute_heavy_join()
+   local tnum = get_table_num()
+   local start_id = get_id()
+   local end_id = start_id + sysbench.opt.range_size
+   param[tnum].heavy_join[1]:set(start_id)
+   param[tnum].heavy_join[2]:set(end_id)
+   param[tnum].heavy_join[3]:set(start_id)
+   param[tnum].heavy_join[4]:set(end_id)
+   param[tnum].heavy_join[5]:set(start_id)
+   param[tnum].heavy_join[6]:set(end_id)
+   param[tnum].heavy_join[7]:set(start_id)
+   param[tnum].heavy_join[8]:set(end_id)
+   param[tnum].heavy_join[9]:set(start_id)
+   param[tnum].heavy_join[10]:set(end_id)
+
+   stmt[tnum].heavy_join:execute()
 end
 
 function execute_order_ranges()
