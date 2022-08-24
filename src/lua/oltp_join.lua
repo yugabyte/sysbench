@@ -31,10 +31,11 @@ function prepare_statements()
 end
 
 function event()
+    if not sysbench.opt.skip_trx then
+        begin()
+    end
     execute_inserts()
     execute_non_index_updates(con)
-    execute_heavy_join()
-    execute_light_join()
 
     local tnum = sysbench.rand.uniform(1, sysbench.opt.tables)
     local id = sysbench.rand.default(1, sysbench.opt.table_size)
@@ -42,5 +43,10 @@ function event()
     param[tnum].deletes[1]:set(id)
     stmt[tnum].deletes:execute()
 
+    if not sysbench.opt.skip_trx then
+        commit()
+    end
+    execute_heavy_join()
+    execute_light_join()
     check_reconnect()
 end
