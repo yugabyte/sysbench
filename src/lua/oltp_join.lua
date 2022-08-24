@@ -27,6 +27,10 @@ function prepare_statements()
     prepare_delete_inserts()
     prepare_non_index_updates()
     prepare_for_each_table("deletes")
+    if not sysbench.opt.skip_trx then
+        prepare_begin()
+        prepare_commit()
+    end
 
 end
 
