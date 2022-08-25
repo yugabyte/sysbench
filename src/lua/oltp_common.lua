@@ -325,10 +325,10 @@ local stmt_defs = {
       "SELECT t1.c, t2.c FROM sbtest%u as t1 join sbtest%u as t2 on t1.id = t2.id where t1.id > ? and t1.id < ? and t2.id > ? and t2.id < ? ",
       t.INT, t.INT, t.INT, t.INT},
    heavy_join = {
-      "SELECT t1.c, t2.c FROM sbtest%u as t1 join sbtest%u as t2 on t1.id = t2.id join sbtest%u as t3 on t1.id = t3.id " ..
+      "SELECT t1.c, t2.c, sum(t1.k) FROM sbtest%u as t1 join sbtest%u as t2 on t1.id = t2.id join sbtest%u as t3 on t1.id = t3.id " ..
       "join sbtest%u as t4 on t1.id = t4.id join sbtest%u as t5 on t1.id = t5.id where " ..
       " t1.id > ? and t1.id < ? and t2.id > ? and t2.id < ? and t3.id > ? and t3.id < ? and t4.id > ? and t4.id < ? " ..
-      "and t5.id > ? and t5.id < ?",
+      "and t5.id > ? and t5.id < ? group by t1.c, t2.c ",
       t.INT, t.INT, t.INT, t.INT, t.INT, t.INT, t.INT, t.INT, t.INT, t.INT},
    sum_ranges = {
       "SELECT SUM(k) FROM sbtest%u WHERE id BETWEEN ? AND ?",
