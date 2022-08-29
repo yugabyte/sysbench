@@ -588,9 +588,10 @@ static db_error_t pgsql_check_status(db_conn_t *con, PGresult *pgres,
     con->sql_state = strdup(PQresultErrorField(pgres, PG_DIAG_SQLSTATE));
     con->sql_errmsg = strdup(PQresultErrorField(pgres, PG_DIAG_MESSAGE_PRIMARY));
 
-    if (!strcmp(con->sql_state, "40P01") /* deadlock_detected */ ||
-        !strcmp(con->sql_state, "23505") /* unique violation */ ||
-        !strcmp(con->sql_state, "40001"))/* serialization_failure */
+//    if (!strcmp(con->sql_state, "40P01") /* deadlock_detected */ ||
+//        !strcmp(con->sql_state, "23505") /* unique violation */ ||
+//        !strcmp(con->sql_state, "40001"))/* serialization_failure */
+    if (true)
     {
       PGresult *tmp;
       tmp = PQexec(pgcon, "ROLLBACK");
