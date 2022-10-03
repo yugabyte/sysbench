@@ -9,8 +9,8 @@ ssh -i ${ppem} -ostricthostkeychecking=no centos@${pip} "sudo /usr/bin/cat ${YBP
 chmod 600 /tmp/my-yb.pem
 for ybsrv in `echo ${3} | tr "," " "`;
 do
-   echo " ssh -i /tmp/my-yb.pem -ostricthostkeychecking=no -p 54422 centos@${ybsrv} \"sudo sh -c "sync; echo 3 > /proc/sys/vm/drop_caches\" " >> /tmp/drop_cache_sh.log
-   nohup /usr/bin/ssh -i /tmp/my-yb.pem -ostricthostkeychecking=no -p 54422 centos@${ybsrv} "sudo sh -c "sync; echo 3 > /proc/sys/vm/drop_caches" >> /tmp/drop_cache_sh.log
+   echo "ssh -i /tmp/my-yb.pem -ostricthostkeychecking=no -p 54422 centos@${ybsrv} \"sudo sh -c \"sync; echo 3 > /proc/sys/vm/drop_caches\"\" " >> /tmp/drop_cache_sh.log
+   nohup /usr/bin/ssh -i /tmp/my-yb.pem -ostricthostkeychecking=no -p 54422 centos@${ybsrv} "sudo sh -c \"sync; echo 3 > /proc/sys/vm/drop_caches\"" >> /tmp/drop_cache_sh.log
 done
 echo -e " ============== `sleep 10` Drop-cache done at: `date` ===================  \n" >> /tmp/drop_cache_sh.log
 /usr/bin/cat /tmp/drop_cache_sh.log
