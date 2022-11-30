@@ -6,6 +6,8 @@
 --    --pgsql-db=yugabyte --pgsql-port=5433 --pgsql-user=yugabyte --pgsql-host=127.0.0.1 --threads=10 run
 -- ----------------------------------------------------------------------
 
+require("oltp_common")
+
 function thread_init()
     -- create a connection
     drv = sysbench.sql.driver()
