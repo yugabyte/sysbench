@@ -25,3 +25,11 @@ function event()
     -- sleep for a second
     sleep(1)
 end
+
+-- ----------------------------------------------------------------------
+-- Overriding thread_done, as “stmt:close()” is not required for this workload. 
+-- ----------------------------------------------------------------------
+
+function thread_done()
+   con:disconnect()
+end
