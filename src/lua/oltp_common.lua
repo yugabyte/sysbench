@@ -466,7 +466,9 @@ end
 function prepare_delete_inserts()
    prepare_for_each_table("deletes")
    prepare_for_each_table("inserts")
-   prepare_for_each_table("inserts_autoinc")
+   if (sysbench.opt.auto_inc) then
+      prepare_for_each_table("inserts_autoinc")
+   end
 end
 
 function thread_init()
