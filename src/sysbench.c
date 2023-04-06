@@ -92,6 +92,7 @@
 sb_arg_t general_args[] =
 {
   SB_OPT("threads", "number of threads to use", "1", INT),
+  SB_OPT("idle-threads", "number of idle threads to use", "0", INT),
   SB_OPT("events", "limit for total number of events", "0", INT),
   SB_OPT("time", "limit for total execution time in seconds", "10", INT),
   SB_OPT("warmup-time", "execute events for this many seconds with statistics "
@@ -618,6 +619,7 @@ void print_run_mode(sb_test_t *test)
 {
   log_text(LOG_NOTICE, "Running the test with following options:");
   log_text(LOG_NOTICE, "Number of threads: %d", sb_globals.threads);
+  log_text(LOG_NOTICE, "Number of idle threads: %d", sb_globals.idle_threads);
 
   if (sb_globals.warmup_time > 0)
     log_text(LOG_NOTICE, "Warmup time: %ds", sb_globals.warmup_time);
@@ -843,6 +845,49 @@ static void *worker_thread(void *arg)
     sb_globals.error = 1;
   else if (test->ops.thread_done != NULL)
     test->ops.thread_done(thread_id);
+
+  return NULL;
+}
+
+/* Idle thread which creates connections and then remain idle*/
+
+
+static void *idle_worker_thread(void *arg)
+{
+  sb_thread_ctxt_t   *ctxt;
+  unsigned int       thread_id;
+  int                rc;
+
+  ctxt = (sb_thread_ctxt_t *)arg;
+  sb_test_t * const test = current_test;
+
+  sb_tls_thread_id = thread_id = ctxt->id;
+
+  /* Initialize thread-local RNG state */
+  sb_rand_thread_init();
+
+  log_text(LOG_DEBUG, "Idle Worker thread (#%d) started", thread_id);
+
+  if (test->ops.thread_init != NULL && test->ops.thread_init(thread_id) != 0)
+  {
+    log_text(LOG_DEBUG, "Worker thread (#%d) failed to initialize!", thread_id);
+    sb_globals.error = 1;
+    /* Avoid blocking the main thread */
+    sb_barrier_wait(&worker_barrier);
+    return NULL;
+  }
+
+  log_text(LOG_DEBUG, "Idle Worker thread (#%d) initialized", thread_id);
+
+  /* Wait for other threads to initialize */
+  if (sb_barrier_wait(&worker_barrier) < 0)
+    return NULL;
+
+  // Now just sleep for (warmup + the test run duration)
+  uint64_t sleeptime = sb_globals.max_time_ns + sb_globals.warmup_time*1000000000;
+  sb_nanosleep(sleeptime);
+  // Mark thread done
+  test->ops.thread_done(thread_id);
 
   return NULL;
 }
@@ -1141,7 +1186,7 @@ static int run_test(sb_test_t *test)
     }
   }
 
-  if ((err = sb_thread_create_workers(&worker_thread)))
+  if ((err = sb_thread_create_workers(&worker_thread, &idle_worker_thread)))
     return err;
 
 #ifdef HAVE_ALARM
@@ -1299,7 +1344,7 @@ static int init(void)
   value_t           *val;
 
   sb_globals.threads = sb_get_value_int("threads");
-
+  sb_globals.idle_threads = sb_get_value_int("idle-threads");
   thread_init_timeout = sb_get_value_int("thread-init-timeout");
   
   if (sb_globals.threads <= 0)

@@ -49,7 +49,8 @@ int sb_thread_join(pthread_t thread, void **retval);
 
 int sb_thread_cancel(pthread_t thread);
 
-int sb_thread_create_workers(void *(*worker_routine)(void*));
+int sb_thread_create_workers(void *(*worker_routine)(void*),
+                             void *(*idle_worker_routine)(void*));
 
 int sb_thread_join_workers(void);
 

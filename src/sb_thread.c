@@ -155,11 +155,15 @@ int sb_thread_cancel(pthread_t thread)
 #endif
 }
 
-int sb_thread_create_workers(void *(*worker_routine)(void*))
+// TODO change global to global + idle threads
+int sb_thread_create_workers(void *(*worker_routine)(void*), void *(*idle_worker_routine)(void*))
 {
   unsigned int i;
 
-  log_text(LOG_NOTICE, "Initializing worker threads...\n");
+  unsigned int total_active_threads = sb_globals.threads - sb_globals.idle_threads;
+
+  log_text(LOG_NOTICE, "Initializing worker threads...total=%d and idle=%d and active = %d\n"
+  , sb_globals.threads, sb_globals.idle_threads, total_active_threads);
 
   for(i = 0; i < sb_globals.threads; i++)
   {
@@ -167,7 +171,8 @@ int sb_thread_create_workers(void *(*worker_routine)(void*))
   }
 
 
-  for(i = 0; i < sb_globals.threads; i++)
+  // Create the real worker threads with the worker routine
+  for(i = 0; i < total_active_threads; i++)
   {
     int err;
 
@@ -175,6 +180,19 @@ int sb_thread_create_workers(void *(*worker_routine)(void*))
                                 worker_routine, (void*)(threads + i))) != 0)
     {
       log_errno(LOG_FATAL, "sb_thread_create() for thread #%d failed.", i);
+      return EXIT_FAILURE;
+    }
+  }
+
+  // Create the idle worker threads with the idle worker routine
+  for(i = total_active_threads; i < sb_globals.threads; i++)
+  {
+    int err;
+
+    if ((err = sb_thread_create(&(threads[i].thread), &sb_thread_attr,
+                                idle_worker_routine, (void*)(threads + i))) != 0)
+    {
+      log_errno(LOG_FATAL, "sb_thread_create() for idle worker thread #%d failed.", i);
       return EXIT_FAILURE;
     }
   }

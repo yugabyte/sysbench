@@ -992,7 +992,7 @@ int sb_lua_call_custom_command(const char *name)
   {
     int err;
 
-    if ((err = sb_thread_create_workers(cmd_worker_thread)))
+    if ((err = sb_thread_create_workers(cmd_worker_thread, NULL)))
       return err;
 
     return sb_thread_join_workers();
