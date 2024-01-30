@@ -88,7 +88,9 @@ sysbench.cmdline.options = {
           "create_secondary is automatically disabled, and " ..
           "delete_inserts is set to 0"},
    num_rows_in_insert =
-      {"Number of INSERT per transaction, for multi-insert test", 10}
+      {"Number of INSERT per transaction, for multi-insert test", 10},
+   start_id = {"Start id", 1},
+   batch_insert_count = {"Number of rows inserted with one insert", 4000}
 }
 
 -- Prepare the dataset. This command supports parallel execution, i.e. will
@@ -115,6 +117,14 @@ function cmd_load()
    sysbench.opt.threads do
       bulk_load(con, i)
    end
+end
+
+function cmd_bulk_load()
+   local drv = sysbench.sql.driver()
+   local con = drv:connect()
+   sysbench.opt.tables = 1
+   sysbench.opt.threads = 1
+   bulk_inserts(con, 1)
 end
 
 -- Preload the dataset into the server cache. This command supports parallel
@@ -156,6 +166,7 @@ sysbench.cmdline.commands = {
    warmup = {cmd_warmup, sysbench.cmdline.PARALLEL_COMMAND},
    create = {cmd_create, sysbench.cmdline.PARALLEL_COMMAND},
    load = {cmd_load, sysbench.cmdline.PARALLEL_COMMAND},
+   bulk_load = {cmd_bulk_load},
    prewarm = {cmd_warmup, sysbench.cmdline.PARALLEL_COMMAND}
 }
 
@@ -164,20 +175,31 @@ sysbench.cmdline.commands = {
 
 -- 10 groups, 119 characters
 local c_value_template = "###########-###########-###########-" ..
-   "###########-###########-###########-" ..
-   "###########-###########-###########-" ..
-   "###########"
+  "###########-###########-###########-" ..
+  "###########-###########-###########-" ..
+  "###########"
+local c_value_template_smaller = "###########-###########-###########-" ..
+   "###########-###########"
 
 -- 5 groups, 59 characters
 local pad_value_template = "###########-###########-###########-" ..
-   "###########-###########"
+  "###########-###########"
+local pad_value_template_smaller = "###########-###########-###########"
 
 function get_c_value()
    return sysbench.rand.string(c_value_template)
 end
 
+function get_c_value_smaller()
+   return sysbench.rand.string(c_value_template_smaller)
+end
+
 function get_pad_value()
    return sysbench.rand.string(pad_value_template)
+end
+
+function get_pad_value_smaller()
+   return sysbench.rand.string(pad_value_template_smaller)
 end
 
 function create_table(drv, con, table_num)
@@ -238,7 +260,7 @@ function create_table(drv, con, table_num)
    end
 
    time = os.date("*t")
-   print(string.format("(%2d:%2d:%2d) Creating table 'sbtest%d'...", 
+   print(string.format("(%2d:%2d:%2d) Creating table 'sbtest%d'...",
                        time.hour, time.min, time.sec, table_num))
 
    query = string.format([[
@@ -256,7 +278,7 @@ CREATE TABLE sbtest%d(
 
    if sysbench.opt.auto_inc and sysbench.opt.serial_cache_size > 0 then
       print(string.format("alter sequence with cache size: %d", sysbench.opt.serial_cache_size))
-      query = "ALTER SEQUENCE sbtest" .. table_num .. 
+      query = "ALTER SEQUENCE sbtest" .. table_num ..
 	          "_id_seq cache " .. sysbench.opt.serial_cache_size
       con:query(query)
    end
@@ -268,6 +290,63 @@ CREATE TABLE sbtest%d(
       con:query(string.format("CREATE INDEX k_%d ON sbtest%d(k)",
               table_num, table_num))
    end
+end
+
+function bulk_inserts(con, table_num)
+
+   print(string.format("oltp_multi_value_insert creates a single table and bulk inserts are performed using single thread"))
+
+   if (sysbench.opt.table_size > 0) then
+      time = os.date("*t")
+      print(string.format("(%2d:%2d:%2d) Inserting %d records into 'sbtest%d'",
+                          time.hour, time.min, time.sec, sysbench.opt.table_size, table_num))
+   end
+   iquery = ""
+
+   if sysbench.opt.auto_inc then
+      iquery = "INSERT INTO sbtest" .. table_num .. "(k, c, pad) VALUES"
+   else
+      iquery = "INSERT INTO sbtest" .. table_num .. "(id, k, c, pad) VALUES"
+   end
+
+   con:bulk_insert_init(iquery)
+
+   local c_val
+   local pad_val
+
+   print(string.format("Insert start from %d to %d",sysbench.opt.start_id,sysbench.opt.table_size))
+   cursize = 1
+
+   for i = sysbench.opt.start_id, sysbench.opt.table_size do
+
+       c_val = get_c_value_smaller()
+       pad_val = get_pad_value_smaller()
+
+       if (sysbench.opt.auto_inc) then
+          query = string.format("(%d, '%s', '%s')",
+                                sysbench.rand.default(1, sysbench.opt.table_size),
+                                c_val, pad_val)
+       else
+          query = string.format("(%d, %d, '%s', '%s')",
+                                i,
+                                sysbench.rand.default(1, sysbench.opt.table_size),
+                                c_val, pad_val)
+       end
+
+       if (cursize % sysbench.opt.batch_insert_count ~= 0) then
+          con:bulk_insert_next(query)
+       elseif (cursize ~= 0) then
+          con:bulk_insert_next(query)
+          con:bulk_insert_done()
+          con:bulk_insert_init(iquery)
+       else
+          con:bulk_insert_init(iquery)
+       end
+       cursize = cursize + 1
+   end
+   time = os.date("*t")
+   print(string.format("(%2d:%2d:%2d) Done Loading", time.hour, time.min, time.sec))
+
 end
 
 function bulk_load(con, table_num)
