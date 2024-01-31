@@ -119,11 +119,11 @@ function cmd_load()
    end
 end
 
-function cmd_bulk_load()
+function execute_multi_value_insert()
    local drv = sysbench.sql.driver()
    local con = drv:connect()
-   sysbench.opt.tables = 1
-   sysbench.opt.threads = 1
+--    sysbench.opt.tables = 1
+--    sysbench.opt.threads = 1
    bulk_inserts(con, 1)
 end
 
@@ -166,7 +166,6 @@ sysbench.cmdline.commands = {
    warmup = {cmd_warmup, sysbench.cmdline.PARALLEL_COMMAND},
    create = {cmd_create, sysbench.cmdline.PARALLEL_COMMAND},
    load = {cmd_load, sysbench.cmdline.PARALLEL_COMMAND},
-   bulk_load = {cmd_bulk_load},
    prewarm = {cmd_warmup, sysbench.cmdline.PARALLEL_COMMAND}
 }
 
@@ -260,7 +259,7 @@ function create_table(drv, con, table_num)
    end
 
    time = os.date("*t")
-   print(string.format("(%2d:%2d:%2d) Creating table 'sbtest%d'...",
+   print(string.format("(%2d:%2d:%2d) Creating table 'sbtest%d'...", 
                        time.hour, time.min, time.sec, table_num))
 
    query = string.format([[
@@ -278,7 +277,7 @@ CREATE TABLE sbtest%d(
 
    if sysbench.opt.auto_inc and sysbench.opt.serial_cache_size > 0 then
       print(string.format("alter sequence with cache size: %d", sysbench.opt.serial_cache_size))
-      query = "ALTER SEQUENCE sbtest" .. table_num ..
+      query = "ALTER SEQUENCE sbtest" .. table_num .. 
 	          "_id_seq cache " .. sysbench.opt.serial_cache_size
       con:query(query)
    end
@@ -294,12 +293,8 @@ end
 
 function bulk_inserts(con, table_num)
 
-   print(string.format("oltp_multi_value_insert creates a single table and bulk inserts are performed using single thread"))
-
    if (sysbench.opt.table_size > 0) then
       time = os.date("*t")
-      print(string.format("(%2d:%2d:%2d) Inserting %d records into 'sbtest%d'",
-                          time.hour, time.min, time.sec, sysbench.opt.table_size, table_num))
    end
    iquery = ""
 
@@ -314,10 +309,9 @@ function bulk_inserts(con, table_num)
    local c_val
    local pad_val
 
-   print(string.format("Insert start from %d to %d",sysbench.opt.start_id,sysbench.opt.table_size))
    cursize = 1
 
-   for i = sysbench.opt.start_id, sysbench.opt.table_size do
+   for i = sysbench.opt.start_id, sysbench.opt.batch_insert_count do
 
        c_val = get_c_value_smaller()
        pad_val = get_pad_value_smaller()
@@ -344,8 +338,7 @@ function bulk_inserts(con, table_num)
        end
        cursize = cursize + 1
    end
-   time = os.date("*t")
-   print(string.format("(%2d:%2d:%2d) Done Loading", time.hour, time.min, time.sec))
+
 
 end
 
