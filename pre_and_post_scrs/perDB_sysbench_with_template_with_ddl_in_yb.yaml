@@ -1,0 +1,82 @@
+benchmarks:
+  - name: perDB_catalog
+    workloadSpec:
+      type: sysbench
+      properties:
+        create: true
+        load: true
+        run: false
+        client-instance-type: c5d.xlarge
+        sysbench-repo-branch: perdb
+        load_threads: 10
+        run_threads: 10
+        test-user: {{ test_user }}
+        time: 600
+        tables: 10
+        table_size: 400000
+        range_key_partitioning: false
+        range_selects: false
+        serial_cache_size: 1000
+        warmup-time: 300
+        num_rows_in_insert: 10
+        workload_subtype: oltp_multi_insert
+        yb_owner: perf-team
+        before_create: pip install psycopg2-binary;python /home/centos/temp/sysbench/pre_and_post_scrs/create_schema.py -d {{ master_leader }} -n 100;python /home/centos/temp/sysbench/pre_and_post_scrs/run_ddl_in_yb.py -d {{ master_leader }} -n 100 > ~/run_ddl_out 2>1 \ &
+        before_load: python /home/centos/temp/sysbench/pre_and_post_scrs/run_ddl_in_yb.py -d {{ master_leader }} -n 100 > ~/run_ddl_out 2>1 \ &
+    clusterSpec:
+      platformId: 301
+      templateName: sgupta_perdb_m6i
+      properties:
+        instanceType: m6i.2xlarge
+        #ybSoftwareVersion: 2.21.0.0-b99921739
+        # Minghui build
+        #ybSoftwareVersion: 2.21.0.0-b99922435sgupta
+        ybSoftwareVersion: 2.21.0.0-b99923456sgupta
+        # Baseline build
+        #ybSoftwareVersion: 2.21.0.0-b119
+
+#      universeName: sgupta-perdb
+
+    jobGroup:
+      - name: perdb-oltp-insert
+        comment: perdb-100tbls-read-write-with-ddl-workload-inyb-ming-less-load
+        clusterSpec:
+          overrides:
+           num_nodes:
+            - 3
+        workloadSpec:
+          overrides:
+            create: ["true"]
+            load: ["true"]
+            run: ["true"]
+            pgsql-db: ["yugabyte"]
+            workload_subtype:
+              - '{"workload": "oltp_read_only", "threads": [9]}'
+#              - '{"workload": "oltp_read_only", "threads": [72]}'
+#              - '{"workload": "oltp_multi_insert", "threads": [6]}'
+#              - '{"workload": "oltp_multi_insert", "threads": [24]}'
+
+
+#      - name: db-db1
+#        clusterSpec:
+#          overrides: {}
+#        workloadSpec:
+#          overrides:
+#            create: [ "true" ]
+#            load: [ "false" ]
+#            run: [ "false" ]
+#            pgsql-db: ["db1"]
+#            workload_subtype:
+#              - '{"workload": "oltp_multi_insert", "threads": [10]}'
+#      - name: db-db1
+#        clusterSpec:
+#          overrides: {}
+#        workloadSpec:
+#          overrides:
+#            create: [ "true" ]
+#            load: [ "false" ]
+#            run: [ "false" ]
+#            pgsql-db: ["db2"]
+#            workload_subtype:
+#              - '{"workload": "oltp_multi_insert", "threads": [10]}'
+
