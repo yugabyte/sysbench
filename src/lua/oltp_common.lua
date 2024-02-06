@@ -89,7 +89,6 @@ sysbench.cmdline.options = {
           "delete_inserts is set to 0"},
    num_rows_in_insert =
       {"Number of INSERT per transaction, for multi-insert test", 10},
-   start_id = {"Start id", 1},
    batch_insert_count = {"Number of rows inserted with one insert", 4000}
 }
 
@@ -311,16 +310,22 @@ function bulk_inserts(con, table_num)
 
    cursize = 1
 
-   for i = sysbench.opt.start_id, sysbench.opt.batch_insert_count do
+   for i = 1, sysbench.opt.batch_insert_count do
 
-       c_val = get_c_value_smaller()
-       pad_val = get_pad_value_smaller()
+       if (sysbench.opt.batch_insert_count <=2000) then
+           c_val = get_c_value()
+           pad_val = get_pad_value()
+       else
+           c_val = get_c_value_smaller()
+           pad_val = get_pad_value_smaller()
+       end
 
        if (sysbench.opt.auto_inc) then
           query = string.format("(%d, '%s', '%s')",
                                 sysbench.rand.default(1, sysbench.opt.table_size),
                                 c_val, pad_val)
        else
+          i = sysbench.rand.unique() - 2147483648
           query = string.format("(%d, %d, '%s', '%s')",
                                 i,
                                 sysbench.rand.default(1, sysbench.opt.table_size),
@@ -329,12 +334,9 @@ function bulk_inserts(con, table_num)
 
        if (cursize % sysbench.opt.batch_insert_count ~= 0) then
           con:bulk_insert_next(query)
-       elseif (cursize ~= 0) then
+       else
           con:bulk_insert_next(query)
           con:bulk_insert_done()
-          con:bulk_insert_init(iquery)
-       else
-          con:bulk_insert_init(iquery)
        end
        cursize = cursize + 1
    end
@@ -760,3 +762,4 @@ function check_reconnect()
       end
    end
 end
+

@@ -28,4 +28,6 @@ end
 
 function event()
     execute_multi_value_insert()
+    check_reconnect()
 end
+
