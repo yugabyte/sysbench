@@ -89,8 +89,12 @@ sysbench.cmdline.options = {
           "delete_inserts is set to 0"},
    num_rows_in_insert =
       {"Number of INSERT per transaction, for multi-insert test", 10},
+
    batch_insert_count = {"Number of rows inserted with one insert", 4000}
 }
+
+-- Global primary key used for oltp_multi_value_insert workload when auto_inc is set to false
+pk_number=1
 
 -- Prepare the dataset. This command supports parallel execution, i.e. will
 -- benefit from executing with --threads > 1 as long as --tables > 1
@@ -121,8 +125,6 @@ end
 function execute_multi_value_insert()
    local drv = sysbench.sql.driver()
    local con = drv:connect()
---    sysbench.opt.tables = 1
---    sysbench.opt.threads = 1
    bulk_inserts(con, 1)
 end
 
@@ -258,7 +260,7 @@ function create_table(drv, con, table_num)
    end
 
    time = os.date("*t")
-   print(string.format("(%2d:%2d:%2d) Creating table 'sbtest%d'...", 
+   print(string.format("(%2d:%2d:%2d) Creating table 'sbtest%d'...",
                        time.hour, time.min, time.sec, table_num))
 
    query = string.format([[
@@ -276,7 +278,7 @@ CREATE TABLE sbtest%d(
 
    if sysbench.opt.auto_inc and sysbench.opt.serial_cache_size > 0 then
       print(string.format("alter sequence with cache size: %d", sysbench.opt.serial_cache_size))
-      query = "ALTER SEQUENCE sbtest" .. table_num .. 
+      query = "ALTER SEQUENCE sbtest" .. table_num ..
 	          "_id_seq cache " .. sysbench.opt.serial_cache_size
       con:query(query)
    end
@@ -310,6 +312,7 @@ function bulk_inserts(con, table_num)
 
    cursize = 1
 
+
    for i = 1, sysbench.opt.batch_insert_count do
 
        if (sysbench.opt.batch_insert_count <=2000) then
@@ -325,11 +328,11 @@ function bulk_inserts(con, table_num)
                                 sysbench.rand.default(1, sysbench.opt.table_size),
                                 c_val, pad_val)
        else
-          i = sysbench.rand.unique() - 2147483648
           query = string.format("(%d, %d, '%s', '%s')",
-                                i,
+                                sysbench.opt.table_size+pk_number,
                                 sysbench.rand.default(1, sysbench.opt.table_size),
                                 c_val, pad_val)
+          pk_number=pk_number+1
        end
 
        if (cursize % sysbench.opt.batch_insert_count ~= 0) then
@@ -338,10 +341,9 @@ function bulk_inserts(con, table_num)
           con:bulk_insert_next(query)
           con:bulk_insert_done()
        end
+
        cursize = cursize + 1
    end
-
-
 end
 
 function bulk_load(con, table_num)
