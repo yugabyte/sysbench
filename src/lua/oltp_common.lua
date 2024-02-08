@@ -89,12 +89,10 @@ sysbench.cmdline.options = {
           "delete_inserts is set to 0"},
    num_rows_in_insert =
       {"Number of INSERT per transaction, for multi-insert test", 10},
-
-   batch_insert_count = {"Number of rows inserted with one insert", 4000}
+   batch_insert_count = {"Number of rows inserted with one insert", 4000},
+   smaller_row_sizes = {"Smaller row sizes, applicable only for oltp_multi_value_insert ", false}
 }
 
--- Global primary key used for oltp_multi_value_insert workload when auto_inc is set to false
-pk_number=1
 
 -- Prepare the dataset. This command supports parallel execution, i.e. will
 -- benefit from executing with --threads > 1 as long as --tables > 1
@@ -122,11 +120,6 @@ function cmd_load()
    end
 end
 
-function execute_multi_value_insert()
-   local drv = sysbench.sql.driver()
-   local con = drv:connect()
-   bulk_inserts(con, 1)
-end
 
 -- Preload the dataset into the server cache. This command supports parallel
 -- execution, i.e. will benefit from executing with --threads > 1 as long as
@@ -294,9 +287,6 @@ end
 
 function bulk_inserts(con, table_num)
 
-   if (sysbench.opt.table_size > 0) then
-      time = os.date("*t")
-   end
    iquery = ""
 
    if sysbench.opt.auto_inc then
@@ -310,40 +300,22 @@ function bulk_inserts(con, table_num)
    local c_val
    local pad_val
 
-   cursize = 1
-
-
    for i = 1, sysbench.opt.batch_insert_count do
 
-       if (sysbench.opt.batch_insert_count <=2000) then
-           c_val = get_c_value()
-           pad_val = get_pad_value()
-       else
+       if (sysbench.opt.smaller_row_sizes) then
            c_val = get_c_value_smaller()
            pad_val = get_pad_value_smaller()
-       end
-
-       if (sysbench.opt.auto_inc) then
-          query = string.format("(%d, '%s', '%s')",
-                                sysbench.rand.default(1, sysbench.opt.table_size),
-                                c_val, pad_val)
        else
-          query = string.format("(%d, %d, '%s', '%s')",
-                                sysbench.opt.table_size+pk_number,
-                                sysbench.rand.default(1, sysbench.opt.table_size),
-                                c_val, pad_val)
-          pk_number=pk_number+1
+           c_val = get_c_value()
+           pad_val = get_pad_value()
        end
 
-       if (cursize % sysbench.opt.batch_insert_count ~= 0) then
-          con:bulk_insert_next(query)
-       else
-          con:bulk_insert_next(query)
-          con:bulk_insert_done()
-       end
+       query = string.format("(%d, '%s', '%s')",sysbench.rand.default(1, sysbench.opt.table_size),c_val, pad_val)
 
-       cursize = cursize + 1
+       con:bulk_insert_next(query)
+
    end
+   con:bulk_insert_done()
 end
 
 function bulk_load(con, table_num)
@@ -617,6 +589,10 @@ function enable_debug()
    con:query(query)
 end
 
+function execute_multi_value_insert()
+   local tnum = get_table_num()
+   bulk_inserts(con, tnum)
+end
 
 function execute_point_selects()
    local tnum = get_table_num()
