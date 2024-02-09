@@ -9,20 +9,15 @@ require("oltp_common")
 
 function thread_init()
     if (not sysbench.opt.auto_inc ) then
-       error("Workload oltp_multi_value_insert only support auto-increment of Primary Key column i.e. (auto_inc=true)")
+       error("Workload oltp_multi_value_insert only supports auto-increment of primary key column i.e. (auto_inc=true)")
     end
     drv = sysbench.sql.driver()
     con = drv:connect()
 end
 
 function event()
-    if (sysbench.opt.auto_inc) then
-        execute_multi_value_insert()
-        check_reconnect()
-    else
-        print("Workload oltp_multi_value_insert only support auto-increment of Primary Key column i.e. (auto_inc=true)")
-        thread_done()
-    end
+    execute_multi_value_insert()
+    check_reconnect()
 end
 
 function thread_done()

@@ -93,7 +93,6 @@ sysbench.cmdline.options = {
    smaller_row_sizes = {"Smaller row sizes, applicable only for oltp_multi_value_insert ", false}
 }
 
-
 -- Prepare the dataset. This command supports parallel execution, i.e. will
 -- benefit from executing with --threads > 1 as long as --tables > 1
 function cmd_prepare()
@@ -119,7 +118,6 @@ function cmd_load()
       bulk_load(con, i)
    end
 end
-
 
 -- Preload the dataset into the server cache. This command supports parallel
 -- execution, i.e. will benefit from executing with --threads > 1 as long as
@@ -285,15 +283,10 @@ CREATE TABLE sbtest%d(
    end
 end
 
+
 function bulk_inserts(con, table_num)
 
-   iquery = ""
-
-   if sysbench.opt.auto_inc then
-      iquery = "INSERT INTO sbtest" .. table_num .. "(k, c, pad) VALUES"
-   else
-      iquery = "INSERT INTO sbtest" .. table_num .. "(id, k, c, pad) VALUES"
-   end
+   iquery = "INSERT INTO sbtest" .. table_num .. "(k, c, pad) VALUES"
 
    con:bulk_insert_init(iquery)
 
