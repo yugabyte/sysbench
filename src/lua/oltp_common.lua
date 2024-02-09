@@ -88,7 +88,9 @@ sysbench.cmdline.options = {
           "create_secondary is automatically disabled, and " ..
           "delete_inserts is set to 0"},
    num_rows_in_insert =
-      {"Number of INSERT per transaction, for multi-insert test", 10}
+      {"Number of INSERT per transaction, for multi-insert test", 10},
+   batch_insert_count = {"Number of rows inserted with one insert", 4000},
+   smaller_row_sizes = {"Smaller row sizes, applicable only for oltp_multi_value_insert ", false}
 }
 
 -- Prepare the dataset. This command supports parallel execution, i.e. will
@@ -164,20 +166,31 @@ sysbench.cmdline.commands = {
 
 -- 10 groups, 119 characters
 local c_value_template = "###########-###########-###########-" ..
-   "###########-###########-###########-" ..
-   "###########-###########-###########-" ..
-   "###########"
+  "###########-###########-###########-" ..
+  "###########-###########-###########-" ..
+  "###########"
+local c_value_template_smaller = "###########-###########-###########-" ..
+   "###########-###########"
 
 -- 5 groups, 59 characters
 local pad_value_template = "###########-###########-###########-" ..
-   "###########-###########"
+  "###########-###########"
+local pad_value_template_smaller = "###########-###########-###########"
 
 function get_c_value()
    return sysbench.rand.string(c_value_template)
 end
 
+function get_c_value_smaller()
+   return sysbench.rand.string(c_value_template_smaller)
+end
+
 function get_pad_value()
    return sysbench.rand.string(pad_value_template)
+end
+
+function get_pad_value_smaller()
+   return sysbench.rand.string(pad_value_template_smaller)
 end
 
 function create_table(drv, con, table_num)
@@ -238,7 +251,7 @@ function create_table(drv, con, table_num)
    end
 
    time = os.date("*t")
-   print(string.format("(%2d:%2d:%2d) Creating table 'sbtest%d'...", 
+   print(string.format("(%2d:%2d:%2d) Creating table 'sbtest%d'...",
                        time.hour, time.min, time.sec, table_num))
 
    query = string.format([[
@@ -256,7 +269,7 @@ CREATE TABLE sbtest%d(
 
    if sysbench.opt.auto_inc and sysbench.opt.serial_cache_size > 0 then
       print(string.format("alter sequence with cache size: %d", sysbench.opt.serial_cache_size))
-      query = "ALTER SEQUENCE sbtest" .. table_num .. 
+      query = "ALTER SEQUENCE sbtest" .. table_num ..
 	          "_id_seq cache " .. sysbench.opt.serial_cache_size
       con:query(query)
    end
@@ -268,6 +281,34 @@ CREATE TABLE sbtest%d(
       con:query(string.format("CREATE INDEX k_%d ON sbtest%d(k)",
               table_num, table_num))
    end
+end
+
+
+function bulk_inserts(con, table_num)
+
+   iquery = "INSERT INTO sbtest" .. table_num .. "(k, c, pad) VALUES"
+
+   con:bulk_insert_init(iquery)
+
+   local c_val
+   local pad_val
+
+   for i = 1, sysbench.opt.batch_insert_count do
+
+       if (sysbench.opt.smaller_row_sizes) then
+           c_val = get_c_value_smaller()
+           pad_val = get_pad_value_smaller()
+       else
+           c_val = get_c_value()
+           pad_val = get_pad_value()
+       end
+
+       query = string.format("(%d, '%s', '%s')",sysbench.rand.default(1, sysbench.opt.table_size),c_val, pad_val)
+
+       con:bulk_insert_next(query)
+
+   end
+   con:bulk_insert_done()
 end
 
 function bulk_load(con, table_num)
@@ -541,6 +582,10 @@ function enable_debug()
    con:query(query)
 end
 
+function execute_multi_value_insert()
+   local tnum = get_table_num()
+   bulk_inserts(con, tnum)
+end
 
 function execute_point_selects()
    local tnum = get_table_num()
@@ -688,3 +733,4 @@ function check_reconnect()
       end
    end
 end
+
