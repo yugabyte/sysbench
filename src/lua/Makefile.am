@@ -21,14 +21,14 @@ dist_pkgdata_SCRIPTS = bulk_insert.lua \
              oltp_insert.lua \
              oltp_multi_insert.lua \
              idleconnection.lua \
-			 oltp_index_scan.lua \
-			 oltp_join.lua \
-			 oltp_multi_value_insert.lua \
-			 oltp_primarykey_scan.lua \
-			 oltp_sequential_scan.lua \
-			 oltp_simple_ranges.lua \
-			 oltp_sum_scan.lua \
-			 select_one.lua \
+             oltp_index_scan.lua \
+             oltp_join.lua \
+             oltp_multi_value_insert.lua \
+             oltp_primarykey_scan.lua \
+             oltp_sequential_scan.lua \
+             oltp_simple_ranges.lua \
+             oltp_sum_scan.lua \
+             select_one.lua \
              oltp_read_only.lua \
              oltp_read_write.lua \
              oltp_point_select.lua \
