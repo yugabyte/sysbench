@@ -43,6 +43,8 @@ sysbench.cmdline.options = {
       {"Cache size used for the serial column", 1000},
    range_key_partitioning =
       {"Whether to use range partitioning", false},
+   manual_range_splitting =
+   {"Splits will be created by sysbench", true},
    num_table_splits =
       {"Number of splits to the tables", 24},
    point_selects =
@@ -88,7 +90,9 @@ sysbench.cmdline.options = {
           "create_secondary is automatically disabled, and " ..
           "delete_inserts is set to 0"},
    num_rows_in_insert =
-      {"Number of INSERT per transaction, for multi-insert test", 10}
+      {"Number of INSERT per transaction, for multi-insert test", 10},
+   batch_insert_count = {"Number of rows inserted with one insert", 4000},
+   smaller_row_sizes = {"Smaller row sizes, applicable only for oltp_multi_value_insert ", false}
 }
 
 -- Prepare the dataset. This command supports parallel execution, i.e. will
@@ -164,20 +168,31 @@ sysbench.cmdline.commands = {
 
 -- 10 groups, 119 characters
 local c_value_template = "###########-###########-###########-" ..
-   "###########-###########-###########-" ..
-   "###########-###########-###########-" ..
-   "###########"
+  "###########-###########-###########-" ..
+  "###########-###########-###########-" ..
+  "###########"
+local c_value_template_smaller = "###########-###########-###########-" ..
+   "###########-###########"
 
 -- 5 groups, 59 characters
 local pad_value_template = "###########-###########-###########-" ..
-   "###########-###########"
+  "###########-###########"
+local pad_value_template_smaller = "###########-###########-###########"
 
 function get_c_value()
    return sysbench.rand.string(c_value_template)
 end
 
+function get_c_value_smaller()
+   return sysbench.rand.string(c_value_template_smaller)
+end
+
 function get_pad_value()
    return sysbench.rand.string(pad_value_template)
+end
+
+function get_pad_value_smaller()
+   return sysbench.rand.string(pad_value_template_smaller)
 end
 
 function create_table(drv, con, table_num)
@@ -217,26 +232,28 @@ function create_table(drv, con, table_num)
    if sysbench.opt.range_key_partitioning then
       range_key_string = "ASC"
 
-      if table_num == 1 then
-         split_stmt = "SPLIT AT VALUES("
-         for i=1,sysbench.opt.num_table_splits - 1 do
-            split_stmt = string.format(
-               "%s(%d)", split_stmt,
-               sysbench.opt.table_size / sysbench.opt.num_table_splits * i)
-            if i < sysbench.opt.num_table_splits - 1 then
-               split_stmt = string.format("%s,", split_stmt)
+      if sysbench.opt.manual_range_splitting then
+         if table_num == 1 then
+            split_stmt = "SPLIT AT VALUES("
+            for i=1,sysbench.opt.num_table_splits - 1 do
+               split_stmt = string.format(
+                       "%s(%d)", split_stmt,
+                       sysbench.opt.table_size / sysbench.opt.num_table_splits * i)
+               if i < sysbench.opt.num_table_splits - 1 then
+                  split_stmt = string.format("%s,", split_stmt)
+               end
             end
-         end
-         split_stmt = string.format("%s)", split_stmt)
-         print(string.format("SPLIT string : %s", split_stmt))
+            split_stmt = string.format("%s)", split_stmt)
+            print(string.format("SPLIT string : %s", split_stmt))
 
-         sysbench.opt.create_table_options =
+            sysbench.opt.create_table_options =
             split_stmt .. sysbench.opt.create_table_options
+         end
       end
    end
 
    time = os.date("*t")
-   print(string.format("(%2d:%2d:%2d) Creating table 'sbtest%d'...", 
+   print(string.format("(%2d:%2d:%2d) Creating table 'sbtest%d'...",
                        time.hour, time.min, time.sec, table_num))
    local extra_columns = 0;
    local extra_cols_ddl = ""
@@ -263,7 +280,7 @@ CREATE TABLE sbtest%d(
 
    if sysbench.opt.auto_inc and sysbench.opt.serial_cache_size > 0 then
       print(string.format("alter sequence with cache size: %d", sysbench.opt.serial_cache_size))
-      query = "ALTER SEQUENCE sbtest" .. table_num .. 
+      query = "ALTER SEQUENCE sbtest" .. table_num ..
 	          "_id_seq cache " .. sysbench.opt.serial_cache_size
       con:query(query)
    end
@@ -280,6 +297,34 @@ CREATE TABLE sbtest%d(
          con:query(string.format("CREATE INDEX k%d_%d ON sbtest%d(k%d)",i, table_num, table_num, i))
       end
    end
+end
+
+
+function bulk_inserts(con, table_num)
+
+   iquery = "INSERT INTO sbtest" .. table_num .. "(k, c, pad) VALUES"
+
+   con:bulk_insert_init(iquery)
+
+   local c_val
+   local pad_val
+
+   for i = 1, sysbench.opt.batch_insert_count do
+
+       if (sysbench.opt.smaller_row_sizes) then
+           c_val = get_c_value_smaller()
+           pad_val = get_pad_value_smaller()
+       else
+           c_val = get_c_value()
+           pad_val = get_pad_value()
+       end
+
+       query = string.format("(%d, '%s', '%s')",sysbench.rand.default(1, sysbench.opt.table_size),c_val, pad_val)
+
+       con:bulk_insert_next(query)
+
+   end
+   con:bulk_insert_done()
 end
 
 function bulk_load(con, table_num)
@@ -348,6 +393,12 @@ local stmt_defs = {
    simple_ranges = {
       "SELECT c FROM sbtest%u WHERE id BETWEEN ? AND ?",
       t.INT, t.INT},
+   sequential_scan = {
+      "SELECT c FROM sbtest%u Limit ?",
+      t.INT},
+   join = {
+      "SELECT t1.c, t2.c FROM sbtest%u as t1 join sbtest%u as t2 on t1.id = t2.id where t1.id > ? and t1.id < ? and t2.id > ? and t2.id < ? ",
+      t.INT, t.INT, t.INT, t.INT},
    sum_ranges = {
       "SELECT SUM(k) FROM sbtest%u WHERE id BETWEEN ? AND ?",
        t.INT, t.INT},
@@ -414,12 +465,53 @@ function prepare_for_each_table(key)
    end
 end
 
+function prepare_for_join(key)
+   for t = 1, sysbench.opt.tables do
+      local join_tnum = sysbench.rand.uniform(1, sysbench.opt.tables)
+      stmt[t][key] = con:prepare(string.format(stmt_defs[key][1], t, join_tnum))
+
+      local nparam = #stmt_defs[key] - 1
+
+      if nparam > 0 then
+         param[t][key] = {}
+      end
+
+      for p = 1, nparam do
+         local btype = stmt_defs[key][p+1]
+         local len
+
+         if type(btype) == "table" then
+            len = btype[2]
+            btype = btype[1]
+         end
+         if btype == sysbench.sql.type.VARCHAR or
+                 btype == sysbench.sql.type.CHAR then
+            param[t][key][p] = stmt[t][key]:bind_create(btype, len)
+         else
+            param[t][key][p] = stmt[t][key]:bind_create(btype)
+         end
+      end
+
+      if nparam > 0 then
+         stmt[t][key]:bind_param(unpack(param[t][key]))
+      end
+   end
+end
+
 function prepare_point_selects()
    prepare_for_each_table("point_selects")
 end
 
 function prepare_simple_ranges()
    prepare_for_each_table("simple_ranges")
+end
+
+function prepare_sequential_scan()
+   prepare_for_each_table("sequential_scan")
+end
+
+function prepare_join()
+   prepare_for_join("join")
 end
 
 function prepare_sum_ranges()
@@ -445,7 +537,9 @@ end
 function prepare_delete_inserts()
    prepare_for_each_table("deletes")
    prepare_for_each_table("inserts")
-   prepare_for_each_table("inserts_autoinc")
+   if (sysbench.opt.auto_inc) then
+      prepare_for_each_table("inserts_autoinc")
+   end
 end
 
 function thread_init()
@@ -518,6 +612,10 @@ function enable_debug()
    con:query(query)
 end
 
+function execute_multi_value_insert()
+   local tnum = get_table_num()
+   bulk_inserts(con, tnum)
+end
 
 function execute_point_selects()
    local tnum = get_table_num()
@@ -549,6 +647,26 @@ end
 
 function execute_sum_ranges()
    execute_range("sum_ranges")
+end
+
+function execute_sequential_scan()
+   local tnum = get_table_num()
+
+   param[tnum].sequential_scan[1]:set(sysbench.opt.range_size)
+
+   stmt[tnum].sequential_scan:execute()
+end
+
+function execute_join()
+   local tnum = get_table_num()
+   local start_id = get_id()
+   local end_id = start_id + sysbench.opt.range_size
+   param[tnum].join[1]:set(start_id)
+   param[tnum].join[2]:set(end_id)
+   param[tnum].join[3]:set(start_id)
+   param[tnum].join[4]:set(end_id)
+
+   stmt[tnum].join:execute()
 end
 
 function execute_order_ranges()
@@ -645,3 +763,4 @@ function check_reconnect()
       end
    end
 end
+
