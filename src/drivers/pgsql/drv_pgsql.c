@@ -585,8 +585,33 @@ static db_error_t pgsql_check_status(db_conn_t *con, PGresult *pgres,
     xfree(con->sql_state);
     xfree(con->sql_errmsg);
 
+    const char *raw_sqlstate = PQresultErrorField(pgres, PG_DIAG_SQLSTATE);
+    const char *raw_errmsg = PQresultErrorField(pgres, PG_DIAG_MESSAGE_PRIMARY);
+
+    log_text(LOG_WARNING,
+             "[DIAG] pgsql_check_status: PQresultErrorField(PG_DIAG_SQLSTATE) returned %s",
+             raw_sqlstate ? raw_sqlstate : "NULL");
+    log_text(LOG_WARNING,
+             "[DIAG] pgsql_check_status: PQresultErrorField(PG_DIAG_MESSAGE_PRIMARY) returned %s",
+             raw_errmsg ? raw_errmsg : "NULL");
+
+    if (raw_sqlstate == NULL)
+      log_text(LOG_WARNING,
+               "[DIAG] About to call strdup(NULL) for sql_state — this will segfault!");
+    if (raw_errmsg == NULL)
+      log_text(LOG_WARNING,
+               "[DIAG] About to call strdup(NULL) for sql_errmsg — this will segfault!");
+
     con->sql_state = strdup(PQresultErrorField(pgres, PG_DIAG_SQLSTATE));
     con->sql_errmsg = strdup(PQresultErrorField(pgres, PG_DIAG_MESSAGE_PRIMARY));
+
+    log_text(LOG_WARNING,
+             "[DIAG] After strdup: con->sql_state=%p, con->sql_errmsg=%p",
+             (void *)con->sql_state, (void *)con->sql_errmsg);
+
+    if (con->sql_state == NULL)
+      log_text(LOG_WARNING,
+               "[DIAG] con->sql_state is NULL — strcmp() below will segfault!");
 
     if (!strcmp(con->sql_state, "40P01") /* deadlock_detected */ ||
         !strcmp(con->sql_state, "23505") /* unique violation */ ||
@@ -599,6 +624,9 @@ static db_error_t pgsql_check_status(db_conn_t *con, PGresult *pgres,
     }
     else
     {
+      if (con->sql_errmsg == NULL)
+        log_text(LOG_WARNING,
+                 "[DIAG] con->sql_errmsg is NULL — passing to log_text will segfault!");
       log_text(LOG_FATAL, "%s() failed: %d %s", funcname, status,
                con->sql_errmsg);
 
