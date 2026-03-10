@@ -585,12 +585,15 @@ static db_error_t pgsql_check_status(db_conn_t *con, PGresult *pgres,
     xfree(con->sql_state);
     xfree(con->sql_errmsg);
 
-    con->sql_state = strdup(PQresultErrorField(pgres, PG_DIAG_SQLSTATE));
-    con->sql_errmsg = strdup(PQresultErrorField(pgres, PG_DIAG_MESSAGE_PRIMARY));
+    const char *sqlstate = PQresultErrorField(pgres, PG_DIAG_SQLSTATE);
+    const char *errmsg = PQresultErrorField(pgres, PG_DIAG_MESSAGE_PRIMARY);
+    con->sql_state = sqlstate ? strdup(sqlstate) : NULL;
+    con->sql_errmsg = errmsg ? strdup(errmsg) : NULL;
 
-    if (!strcmp(con->sql_state, "40P01") /* deadlock_detected */ ||
-        !strcmp(con->sql_state, "23505") /* unique violation */ ||
-        !strcmp(con->sql_state, "40001"))/* serialization_failure */
+    if (con->sql_state != NULL &&
+        (!strcmp(con->sql_state, "40P01") /* deadlock_detected */ ||
+         !strcmp(con->sql_state, "23505") /* unique violation */ ||
+         !strcmp(con->sql_state, "40001")))/* serialization_failure */
     {
       PGresult *tmp;
       tmp = PQexec(pgcon, "ROLLBACK");
@@ -600,7 +603,7 @@ static db_error_t pgsql_check_status(db_conn_t *con, PGresult *pgres,
     else
     {
       log_text(LOG_FATAL, "%s() failed: %d %s", funcname, status,
-               con->sql_errmsg);
+               con->sql_errmsg ? con->sql_errmsg : "(unknown error)");
 
       if (query != NULL)
         log_text(LOG_FATAL, "failed query was: %s", query);
