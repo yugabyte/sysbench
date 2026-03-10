@@ -587,13 +587,52 @@ static db_error_t pgsql_check_status(db_conn_t *con, PGresult *pgres,
 
     const char *raw_sqlstate = PQresultErrorField(pgres, PG_DIAG_SQLSTATE);
     const char *raw_errmsg = PQresultErrorField(pgres, PG_DIAG_MESSAGE_PRIMARY);
+    const char *raw_severity = PQresultErrorField(pgres, PG_DIAG_SEVERITY);
+    const char *raw_detail = PQresultErrorField(pgres, PG_DIAG_MESSAGE_DETAIL);
+    const char *raw_hint = PQresultErrorField(pgres, PG_DIAG_MESSAGE_HINT);
+
+    ConnStatusType conn_status = PQstatus(pgcon);
+    const char *conn_errmsg = PQerrorMessage(pgcon);
+    int server_version = PQserverVersion(pgcon);
 
     log_text(LOG_WARNING,
-             "[DIAG] pgsql_check_status: PQresultErrorField(PG_DIAG_SQLSTATE) returned %s",
-             raw_sqlstate ? raw_sqlstate : "NULL");
+             "[DIAG] --- Server-side diagnostics (PGRES_FATAL_ERROR) ---");
     log_text(LOG_WARNING,
-             "[DIAG] pgsql_check_status: PQresultErrorField(PG_DIAG_MESSAGE_PRIMARY) returned %s",
-             raw_errmsg ? raw_errmsg : "NULL");
+             "[DIAG] Connection status: %s (PQstatus=%d)",
+             conn_status == CONNECTION_OK ? "CONNECTION_OK" : "CONNECTION_BAD",
+             (int)conn_status);
+    log_text(LOG_WARNING,
+             "[DIAG] Server version: %d", server_version);
+    log_text(LOG_WARNING,
+             "[DIAG] PQerrorMessage: %s",
+             conn_errmsg ? conn_errmsg : "NULL");
+    log_text(LOG_WARNING,
+             "[DIAG] PQresultErrorMessage: %s",
+             PQresultErrorMessage(pgres));
+    log_text(LOG_WARNING,
+             "[DIAG] Error field SEVERITY: %s",
+             raw_severity ? raw_severity : "NULL (server did not send)");
+    log_text(LOG_WARNING,
+             "[DIAG] Error field SQLSTATE: %s",
+             raw_sqlstate ? raw_sqlstate : "NULL (server did not send)");
+    log_text(LOG_WARNING,
+             "[DIAG] Error field MESSAGE_PRIMARY: %s",
+             raw_errmsg ? raw_errmsg : "NULL (server did not send)");
+    log_text(LOG_WARNING,
+             "[DIAG] Error field MESSAGE_DETAIL: %s",
+             raw_detail ? raw_detail : "NULL (server did not send)");
+    log_text(LOG_WARNING,
+             "[DIAG] Error field MESSAGE_HINT: %s",
+             raw_hint ? raw_hint : "NULL (server did not send)");
+
+    if (raw_sqlstate == NULL || raw_errmsg == NULL)
+      log_text(LOG_WARNING,
+               "[DIAG] Server (version %d) did not populate required error fields — "
+               "this is a server-side issue (YugabyteDB/PostgreSQL did not include "
+               "SQLSTATE=%s and/or MESSAGE_PRIMARY=%s in its ErrorResponse)",
+               server_version,
+               raw_sqlstate ? "present" : "MISSING",
+               raw_errmsg ? "present" : "MISSING");
 
     if (raw_sqlstate == NULL)
       log_text(LOG_WARNING,
