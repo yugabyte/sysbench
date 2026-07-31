@@ -137,14 +137,14 @@ function cmd_load()
          local ok, err = pcall(bulk_load, con, i)
          if ok then break end
 
-         log_time("ERROR loading 'sbtest%d': %s", i, tostring(err))
-
          if attempt > max_retries then
+            log_time("ERROR loading 'sbtest%d': %s", i, tostring(err))
             error(string.format(
                "Failed to load 'sbtest%d' after %d retries: %s",
                i, max_retries, tostring(err)))
          end
 
+         log_time("WARNING loading 'sbtest%d': %s", i, tostring(err))
          log_time("Retry %d/%d: recreating 'sbtest%d'...",
                   attempt, max_retries, i)
 
