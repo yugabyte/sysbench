@@ -90,7 +90,11 @@ sysbench.cmdline.options = {
    num_rows_in_insert =
       {"Number of INSERT per transaction, for multi-insert test", 10},
    batch_insert_count = {"Number of rows inserted with one insert", 4000},
-   smaller_row_sizes = {"Smaller row sizes, applicable only for oltp_multi_value_insert ", false}
+   smaller_row_sizes = {"Smaller row sizes, applicable only for oltp_multi_value_insert ", false},
+   load_max_retries =
+      {"Maximum number of retries for data loading on SQL errors", 3},
+   load_retry_delay =
+      {"Delay in seconds between load retries", 10}
 }
 
 -- Prepare the dataset. This command supports parallel execution, i.e. will
@@ -113,9 +117,67 @@ end
 function cmd_load()
    local drv = sysbench.sql.driver()
    local con = drv:connect()
+   local max_retries = sysbench.opt.load_max_retries
+   local retry_delay = sysbench.opt.load_retry_delay
+
    for i = sysbench.tid % sysbench.opt.threads + 1, sysbench.opt.tables,
    sysbench.opt.threads do
-      bulk_load(con, i)
+      local attempt = 0
+      local success = false
+
+      while not success and attempt <= max_retries do
+         local ok, err = pcall(bulk_load, con, i)
+
+         if ok then
+            success = true
+         else
+            attempt = attempt + 1
+            local time = os.date("*t")
+            print(string.format(
+               "(%2d:%2d:%2d) ERROR loading table 'sbtest%d': %s",
+               time.hour, time.min, time.sec, i, tostring(err)))
+
+            if attempt > max_retries then
+               error(string.format(
+                  "Failed to load table 'sbtest%d' after %d retries. Last error: %s",
+                  i, max_retries, tostring(err)))
+            end
+
+            print(string.format(
+               "(%2d:%2d:%2d) Retry %d/%d: dropping and recreating table 'sbtest%d' before reload...",
+               time.hour, time.min, time.sec, attempt, max_retries, i))
+
+            -- Reconnect in case the connection is in a bad state
+            local rok, rerr = pcall(function() con:reconnect() end)
+            if not rok then
+               print(string.format(
+                  "(%2d:%2d:%2d) WARNING: reconnect failed (%s), creating new connection...",
+                  time.hour, time.min, time.sec, tostring(rerr)))
+               con = drv:connect()
+            end
+
+            -- Drop the partially loaded table and recreate it
+            local dok, derr = pcall(function()
+               con:query("DROP TABLE IF EXISTS sbtest" .. i)
+            end)
+            if not dok then
+               print(string.format(
+                  "(%2d:%2d:%2d) WARNING: DROP TABLE failed (%s), reconnecting...",
+                  time.hour, time.min, time.sec, tostring(derr)))
+               con = drv:connect()
+               con:query("DROP TABLE IF EXISTS sbtest" .. i)
+            end
+
+            create_table(drv, con, i)
+
+            if retry_delay > 0 then
+               print(string.format(
+                  "(%2d:%2d:%2d) Waiting %d seconds before retry...",
+                  time.hour, time.min, time.sec, retry_delay))
+               os.execute("sleep " .. retry_delay)
+            end
+         end
+      end
    end
 end
 
