@@ -94,7 +94,9 @@ sysbench.cmdline.options = {
    load_max_retries =
       {"Maximum number of retries for data loading on SQL errors", 3},
    load_retry_delay =
-      {"Delay in seconds between load retries", 10}
+      {"Delay in seconds between load retries", 10},
+   load_simulate_failures =
+      {"[TEST ONLY] Simulate this many consecutive load failures per table before succeeding. 0 to disable", 0}
 }
 
 -- Prepare the dataset. This command supports parallel execution, i.e. will
@@ -125,16 +127,33 @@ local function ensure_connection(drv, con)
    return drv:connect()
 end
 
+local simulate_fail_counts = {}
+
 function cmd_load()
    local drv = sysbench.sql.driver()
    local con = drv:connect()
    local max_retries = sysbench.opt.load_max_retries
    local retry_delay = sysbench.opt.load_retry_delay
+   local sim_failures = sysbench.opt.load_simulate_failures
 
    for i = sysbench.tid % sysbench.opt.threads + 1, sysbench.opt.tables,
    sysbench.opt.threads do
       for attempt = 1, max_retries + 1 do
-         local ok, err = pcall(bulk_load, con, i)
+         local ok, err
+
+         if sim_failures > 0 then
+            simulate_fail_counts[i] = (simulate_fail_counts[i] or 0) + 1
+            if simulate_fail_counts[i] <= sim_failures then
+               ok, err = false, string.format(
+                  "Simulated SQL error on 'sbtest%d' (failure %d/%d)",
+                  i, simulate_fail_counts[i], sim_failures)
+            else
+               ok, err = pcall(bulk_load, con, i)
+            end
+         else
+            ok, err = pcall(bulk_load, con, i)
+         end
+
          if ok then break end
 
          if attempt > max_retries then
