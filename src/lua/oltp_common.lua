@@ -90,7 +90,13 @@ sysbench.cmdline.options = {
    num_rows_in_insert =
       {"Number of INSERT per transaction, for multi-insert test", 10},
    batch_insert_count = {"Number of rows inserted with one insert", 4000},
-   smaller_row_sizes = {"Smaller row sizes, applicable only for oltp_multi_value_insert ", false}
+   smaller_row_sizes = {"Smaller row sizes, applicable only for oltp_multi_value_insert ", false},
+   load_max_retries =
+      {"Maximum number of retries for data loading on SQL errors", 3},
+   load_retry_delay =
+      {"Delay in seconds between load retries", 10},
+   load_simulate_failures =
+      {"[TEST ONLY] Simulate this many consecutive load failures per table before succeeding. 0 to disable", 0}
 }
 
 -- Prepare the dataset. This command supports parallel execution, i.e. will
@@ -110,12 +116,66 @@ function cmd_create()
    end
 end
 
+local function log_time(fmt, ...)
+   local t = os.date("*t")
+   print(string.format("(%2d:%2d:%2d) " .. fmt, t.hour, t.min, t.sec, ...))
+end
+
+local function ensure_connection(drv, con)
+   local ok = pcall(function() con:reconnect() end)
+   if ok then return con end
+   return drv:connect()
+end
+
+local simulate_fail_counts = {}
+
 function cmd_load()
    local drv = sysbench.sql.driver()
    local con = drv:connect()
+   local max_retries = sysbench.opt.load_max_retries
+   local retry_delay = sysbench.opt.load_retry_delay
+   local sim_failures = sysbench.opt.load_simulate_failures
+
    for i = sysbench.tid % sysbench.opt.threads + 1, sysbench.opt.tables,
    sysbench.opt.threads do
-      bulk_load(con, i)
+      for attempt = 1, max_retries + 1 do
+         local ok, err
+
+         if sim_failures > 0 then
+            simulate_fail_counts[i] = (simulate_fail_counts[i] or 0) + 1
+            if simulate_fail_counts[i] <= sim_failures then
+               ok, err = false, string.format(
+                  "Simulated SQL error on 'sbtest%d' (failure %d/%d)",
+                  i, simulate_fail_counts[i], sim_failures)
+            else
+               ok, err = pcall(bulk_load, con, i)
+            end
+         else
+            ok, err = pcall(bulk_load, con, i)
+         end
+
+         if ok then break end
+
+         if attempt > max_retries then
+            log_time("ERROR loading 'sbtest%d': %s", i, tostring(err))
+            error(string.format(
+               "Failed to load 'sbtest%d' after %d retries: %s",
+               i, max_retries, tostring(err)))
+         end
+
+         log_time("WARNING loading 'sbtest%d': %s", i, tostring(err))
+         log_time("Retry %d/%d: recreating 'sbtest%d'...",
+                  attempt, max_retries, i)
+
+         con = ensure_connection(drv, con)
+         con:query("DROP TABLE IF EXISTS sbtest" .. i)
+         create_table(drv, con, i)
+
+         if retry_delay > 0 then
+            log_time("Waiting %d seconds before retry...", retry_delay)
+            os.execute("sleep " .. retry_delay)
+         end
+      end
    end
 end
 
