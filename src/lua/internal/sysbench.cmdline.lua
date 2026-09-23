@@ -191,7 +191,17 @@ function sysbench.cmdline.call_command(name)
       return false
    end
 
-   local rc = sysbench.cmdline.commands[name][1]()
+   local ok, rc = pcall(sysbench.cmdline.commands[name][1])
+
+   if not ok then
+      if type(rc) == "table" and rc.sql_errmsg then
+         error(string.format("SQL error, errno = %d, state = '%s': %s",
+                             rc.sql_errno or 0,
+                             rc.sql_state or "unknown",
+                             rc.sql_errmsg or "unknown"))
+      end
+      error(rc)
+   end
 
    if rc == nil then
       -- handle the case when the command does not return and value as success
