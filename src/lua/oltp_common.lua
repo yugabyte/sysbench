@@ -119,12 +119,6 @@ local function log_time(fmt, ...)
    print(string.format("(%2d:%2d:%2d) " .. fmt, t.hour, t.min, t.sec, ...))
 end
 
-local function ensure_connection(drv, con)
-   local ok = pcall(function() con:reconnect() end)
-   if ok then return con end
-   return drv:connect()
-end
-
 function cmd_load()
    local drv = sysbench.sql.driver()
    local con = drv:connect()
@@ -148,7 +142,6 @@ function cmd_load()
          log_time("Retry %d/%d: recreating 'sbtest%d'...",
                   attempt, max_retries, i)
 
-         con = ensure_connection(drv, con)
          con:query("DROP TABLE IF EXISTS sbtest" .. i)
          create_table(drv, con, i)
 
