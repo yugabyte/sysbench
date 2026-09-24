@@ -234,6 +234,10 @@ function get_pad_value_smaller()
    return sysbench.rand.string(pad_value_template_smaller)
 end
 
+-- create_table() can run more than once per thread (load retries recreate the
+-- table), so the SPLIT clause must only be prepended to create_table_options once.
+local split_clause_applied = false
+
 function create_table(drv, con, table_num)
    local id_index_def, id_def
    local engine_def = ""
@@ -272,7 +276,7 @@ function create_table(drv, con, table_num)
       range_key_string = "ASC"
 
       if sysbench.opt.manual_range_splitting then
-         if table_num == 1 then
+         if table_num == 1 and not split_clause_applied then
             split_stmt = "SPLIT AT VALUES("
             for i=1,sysbench.opt.num_table_splits - 1 do
                split_stmt = string.format(
@@ -287,6 +291,7 @@ function create_table(drv, con, table_num)
 
             sysbench.opt.create_table_options =
             split_stmt .. sysbench.opt.create_table_options
+            split_clause_applied = true
          end
       end
    end
