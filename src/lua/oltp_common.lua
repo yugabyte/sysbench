@@ -90,7 +90,11 @@ sysbench.cmdline.options = {
    num_rows_in_insert =
       {"Number of INSERT per transaction, for multi-insert test", 10},
    batch_insert_count = {"Number of rows inserted with one insert", 4000},
-   smaller_row_sizes = {"Smaller row sizes, applicable only for oltp_multi_value_insert ", false}
+   smaller_row_sizes = {"Smaller row sizes, applicable only for oltp_multi_value_insert ", false},
+   load_max_retries =
+      {"Maximum number of retries for data loading on SQL errors", 3},
+   load_retry_delay =
+      {"Delay in seconds between load retries", 10}
 }
 
 -- Prepare the dataset. This command supports parallel execution, i.e. will
@@ -110,12 +114,42 @@ function cmd_create()
    end
 end
 
+local function log_time(fmt, ...)
+   local t = os.date("*t")
+   print(string.format("(%2d:%2d:%2d) " .. fmt, t.hour, t.min, t.sec, ...))
+end
+
 function cmd_load()
    local drv = sysbench.sql.driver()
    local con = drv:connect()
+   local max_retries = sysbench.opt.load_max_retries
+   local retry_delay = sysbench.opt.load_retry_delay
+
    for i = sysbench.tid % sysbench.opt.threads + 1, sysbench.opt.tables,
    sysbench.opt.threads do
-      bulk_load(con, i)
+      for attempt = 1, max_retries + 1 do
+         local ok, err = pcall(bulk_load, con, i)
+         if ok then break end
+
+         if attempt > max_retries then
+            log_time("ERROR loading 'sbtest%d': %s", i, tostring(err))
+            error(string.format(
+               "Failed to load 'sbtest%d' after %d retries: %s",
+               i, max_retries, tostring(err)))
+         end
+
+         log_time("WARNING loading 'sbtest%d': %s", i, tostring(err))
+         log_time("Retry %d/%d: recreating 'sbtest%d'...",
+                  attempt, max_retries, i)
+
+         con:query("DROP TABLE IF EXISTS sbtest" .. i)
+         create_table(drv, con, i)
+
+         if retry_delay > 0 then
+            log_time("Waiting %d seconds before retry...", retry_delay)
+            os.execute("sleep " .. retry_delay)
+         end
+      end
    end
 end
 
@@ -193,6 +227,10 @@ function get_pad_value_smaller()
    return sysbench.rand.string(pad_value_template_smaller)
 end
 
+-- create_table() can run more than once per thread (load retries recreate the
+-- table), so the SPLIT clause must only be prepended to create_table_options once.
+local split_clause_applied = false
+
 function create_table(drv, con, table_num)
    local id_index_def, id_def
    local engine_def = ""
@@ -231,7 +269,7 @@ function create_table(drv, con, table_num)
       range_key_string = "ASC"
 
       if sysbench.opt.manual_range_splitting then
-         if table_num == 1 then
+         if table_num == 1 and not split_clause_applied then
             split_stmt = "SPLIT AT VALUES("
             for i=1,sysbench.opt.num_table_splits - 1 do
                split_stmt = string.format(
@@ -246,6 +284,7 @@ function create_table(drv, con, table_num)
 
             sysbench.opt.create_table_options =
             split_stmt .. sysbench.opt.create_table_options
+            split_clause_applied = true
          end
       end
    end
