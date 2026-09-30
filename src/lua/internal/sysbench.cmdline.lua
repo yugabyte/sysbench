@@ -198,9 +198,9 @@ function sysbench.cmdline.call_command(name)
          error(string.format("SQL error, errno = %d, state = '%s': %s",
                              rc.sql_errno or 0,
                              rc.sql_state or "unknown",
-                             rc.sql_errmsg or "unknown"))
+                             rc.sql_errmsg or "unknown"), 0)
       end
-      error(rc)
+      error(rc, 0)
    end
 
    if rc == nil then
