@@ -94,7 +94,11 @@ sysbench.cmdline.options = {
    load_max_retries =
       {"Maximum number of retries for data loading on SQL errors", 3},
    load_retry_delay =
-      {"Delay in seconds between load retries", 10}
+      {"Delay in seconds between load retries", 10},
+   create_max_retries =
+      {"Maximum number of retries for table creation on 40001 errors", 3},
+   create_retry_delay =
+      {"Delay in seconds between table creation retries", 10}
 }
 
 -- Prepare the dataset. This command supports parallel execution, i.e. will
@@ -104,19 +108,39 @@ function cmd_prepare()
    cmd_load()
 end
 
+local function log_time(fmt, ...)
+   local t = os.date("*t")
+   print(string.format("(%2d:%2d:%2d) " .. fmt, t.hour, t.min, t.sec, ...))
+end
+
+-- Retries only transient 40001 errors (e.g. YugabyteDB catalog version mismatch on concurrent DDL), so an existing table is never dropped
+function create_table_with_retry(drv, con, table_num)
+   for attempt = 1, sysbench.opt.create_max_retries + 1 do
+      local ok, err = pcall(create_table, drv, con, table_num)
+      if ok then return end
+
+      -- SQL errors are raised either as a table or as a string
+      local state = type(err) == "table" and err.sql_state or tostring(err)
+      if attempt > sysbench.opt.create_max_retries or
+         not state:find("40001", 1, true) then
+         error(err, 0)
+      end
+
+      log_time("Retry %d creating 'sbtest%d' after 40001 error",
+               attempt, table_num)
+      os.execute("sleep " .. sysbench.opt.create_retry_delay)
+      con:query("DROP TABLE IF EXISTS sbtest" .. table_num)
+   end
+end
+
 function cmd_create()
    local drv = sysbench.sql.driver()
    local con = drv:connect()
 
    for i = sysbench.tid % sysbench.opt.threads + 1, sysbench.opt.tables,
    sysbench.opt.threads do
-     create_table(drv, con, i)
+     create_table_with_retry(drv, con, i)
    end
-end
-
-local function log_time(fmt, ...)
-   local t = os.date("*t")
-   print(string.format("(%2d:%2d:%2d) " .. fmt, t.hour, t.min, t.sec, ...))
 end
 
 function cmd_load()
@@ -143,7 +167,7 @@ function cmd_load()
                   attempt, max_retries, i)
 
          con:query("DROP TABLE IF EXISTS sbtest" .. i)
-         create_table(drv, con, i)
+         create_table_with_retry(drv, con, i)
 
          if retry_delay > 0 then
             log_time("Waiting %d seconds before retry...", retry_delay)
