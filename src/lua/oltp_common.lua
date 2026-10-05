@@ -96,7 +96,7 @@ sysbench.cmdline.options = {
    load_retry_delay =
       {"Delay in seconds between load retries", 10},
    create_max_retries =
-      {"Maximum number of retries for table creation on 40001 errors", 3},
+      {"Maximum number of retries for table creation on SQL errors", 3},
    create_retry_delay =
       {"Delay in seconds between table creation retries", 10}
 }
@@ -113,13 +113,11 @@ local function log_time(fmt, ...)
    print(string.format("(%2d:%2d:%2d) " .. fmt, t.hour, t.min, t.sec, ...))
 end
 
--- Retries only transient 40001 errors (e.g. YugabyteDB catalog version
--- mismatch on concurrent DDL), so an existing table is never dropped.
--- With drop_first, the table is dropped before the first attempt as well.
+-- Retries table creation on any error (e.g. YugabyteDB catalog version mismatch on concurrent DDL), dropping the table before each retry. With drop_first, the table is dropped before the first attempt as well.
 function create_table_with_retry(drv, con, table_num, drop_first)
    for attempt = 1, sysbench.opt.create_max_retries + 1 do
       local ok, err = pcall(function()
-         -- The DROP is DDL too, so it must be retried on 40001 as well
+         -- The DROP is DDL too, so it is retried as well
          if drop_first or attempt > 1 then
             con:query("DROP TABLE IF EXISTS sbtest" .. table_num)
          end
@@ -127,15 +125,11 @@ function create_table_with_retry(drv, con, table_num, drop_first)
       end)
       if ok then return end
 
-      -- SQL errors are raised either as a table or as a string
-      local state = type(err) == "table" and err.sql_state or
-         tostring(err):match("state = '(%w+)'")
-      if attempt > sysbench.opt.create_max_retries or state ~= "40001" then
+      if attempt > sysbench.opt.create_max_retries then
          error(err, 0)
       end
 
-      log_time("Retry %d creating 'sbtest%d' after 40001 error",
-               attempt, table_num)
+      log_time("Retry %d creating 'sbtest%d' after error", attempt, table_num)
       os.execute("sleep " .. sysbench.opt.create_retry_delay)
    end
 end
