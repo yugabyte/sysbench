@@ -113,23 +113,30 @@ local function log_time(fmt, ...)
    print(string.format("(%2d:%2d:%2d) " .. fmt, t.hour, t.min, t.sec, ...))
 end
 
--- Retries only transient 40001 errors (e.g. YugabyteDB catalog version mismatch on concurrent DDL), so an existing table is never dropped
-function create_table_with_retry(drv, con, table_num)
+-- Retries only transient 40001 errors (e.g. YugabyteDB catalog version
+-- mismatch on concurrent DDL), so an existing table is never dropped.
+-- With drop_first, the table is dropped before the first attempt as well.
+function create_table_with_retry(drv, con, table_num, drop_first)
    for attempt = 1, sysbench.opt.create_max_retries + 1 do
-      local ok, err = pcall(create_table, drv, con, table_num)
+      local ok, err = pcall(function()
+         -- The DROP is DDL too, so it must be retried on 40001 as well
+         if drop_first or attempt > 1 then
+            con:query("DROP TABLE IF EXISTS sbtest" .. table_num)
+         end
+         create_table(drv, con, table_num)
+      end)
       if ok then return end
 
       -- SQL errors are raised either as a table or as a string
-      local state = type(err) == "table" and err.sql_state or tostring(err)
-      if attempt > sysbench.opt.create_max_retries or
-         not state:find("40001", 1, true) then
+      local state = type(err) == "table" and err.sql_state or
+         tostring(err):match("state = '(%w+)'")
+      if attempt > sysbench.opt.create_max_retries or state ~= "40001" then
          error(err, 0)
       end
 
       log_time("Retry %d creating 'sbtest%d' after 40001 error",
                attempt, table_num)
       os.execute("sleep " .. sysbench.opt.create_retry_delay)
-      con:query("DROP TABLE IF EXISTS sbtest" .. table_num)
    end
 end
 
@@ -166,8 +173,7 @@ function cmd_load()
          log_time("Retry %d/%d: recreating 'sbtest%d'...",
                   attempt, max_retries, i)
 
-         con:query("DROP TABLE IF EXISTS sbtest" .. i)
-         create_table_with_retry(drv, con, i)
+         create_table_with_retry(drv, con, i, true)
 
          if retry_delay > 0 then
             log_time("Waiting %d seconds before retry...", retry_delay)
